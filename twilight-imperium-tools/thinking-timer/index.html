@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Person Clock App</title>
+    <style>
+        /* Updated styling to reflect a modern, sleek theme inspired by Twilight Imperium */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+
+        #setup,
+        #clock-stage,
+        #results {
+            max-width: 600px;
+            margin: auto;
+            padding: 20px;
+        }
+
+        h1,
+        h2 {
+            text-align: center;
+            color: #f0f0f0;
+        }
+
+        .input-group {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .input-group label {
+            flex: 1;
+            margin-right: 10px;
+        }
+
+        .input-group input {
+            flex: 1;
+            padding: 5px;
+            background: #333;
+            border: 1px solid #555;
+            color: #e0e0e0;
+        }
+
+        #player-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        #player-list li {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        #player-list input[type="text"] {
+            flex: 1;
+            margin-right: 10px;
+            padding: 5px;
+            background: #333;
+            border: 1px solid #555;
+            color: #e0e0e0;
+        }
+
+        #player-list input[type="color"] {
+            margin-right: 10px;
+        }
+
+        #player-list button {
+            padding: 5px 10px;
+            background: #444;
+            border: none;
+            color: #e0e0e0;
+            cursor: pointer;
+        }
+
+        #player-list button:hover {
+            background: #555;
+        }
+
+        #add-player,
+        #start-game,
+        #restart-setup {
+            margin-top: 10px;
+            padding: 10px;
+            width: 100%;
+            background: #444;
+            border: none;
+            color: #e0e0e0;
+            cursor: pointer;
+        }
+
+        #add-player:hover,
+        #start-game:hover,
+        #restart-setup:hover {
+            background: #555;
+        }
+
+        #clocks {
+            margin-top: 20px;
+        }
+
+        .clock {
+            background: #333;
+            color: #e0e0e0;
+            padding: 20px;
+            margin-bottom: 10px;
+            border-radius: 10px;
+            position: relative;
+            cursor: pointer;
+            text-shadow: 0 0 3px #000;
+        }
+
+        .clock.active {
+            box-shadow: 0 0 10px #f39c12;
+        }
+
+        .clock .name {
+            font-size: 1.2em;
+            margin-bottom: 5px;
+        }
+
+        .clock .total-time,
+        .clock .current-time {
+            font-size: 1em;
+        }
+
+        #controls {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        #controls button {
+            margin: 5px;
+            padding: 10px 20px;
+            background: #444;
+            border: none;
+            color: #e0e0e0;
+            cursor: pointer;
+        }
+
+        #controls button:hover {
+            background: #555;
+        }
+
+        #results table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #333;
+        }
+
+        #results th,
+        #results td {
+            border: 1px solid #555;
+            padding: 10px;
+            text-align: center;
+        }
+
+        #results th {
+            background: #444;
+        }
+
+        @media (max-width: 600px) {
+            .clock {
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="setup">
+        <h1>Multi-Person Clock App</h1>
+        <h2>Setup Players</h2>
+        <div class="input-group">
+            <label for="long-thinking-time">Long Thinking Time (minutes):</label>
+            <input type="number" id="long-thinking-time" value="5" min="0" step="any">
+        </div>
+        <ul id="player-list"></ul>
+        <button id="add-player">Add Player</button>
+        <button id="start-game">Start Game</button>
+    </div>
+
+    <div id="clock-stage" style="display: none;">
+        <h2>Game Clocks</h2>
+        <div id="controls">
+            <button id="reset-all">Reset All</button>
+            <button id="pause-all">Pause All</button>
+            <button id="end-game">End Game</button>
+            <button id="back-to-setup">Back to Setup</button>
+        </div>
+        <div id="clocks"></div>
+    </div>
+
+    <div id="results" style="display: none;">
+        <h2>Game Results</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Player</th>
+                    <th>Total Time</th>
+                </tr>
+            </thead>
+            <tbody id="results-body"></tbody>
+        </table>
+        <button id="restart-setup">Restart</button>
+    </div>
+
+    <script>
+        let players = [];
+        let longThinkingTime = 0;
+        let activePlayer = null;
+        let intervals = {};
+
+        function randomMutedColor() {
+            const r = Math.floor(Math.random() * 128 + 64);
+            const g = Math.floor(Math.random() * 128 + 64);
+            const b = Math.floor(Math.random() * 128 + 64);
+            return `rgb(${r},${g},${b})`;
+        }
+
+        function addPlayer(name = '', color = randomMutedColor()) {
+            const player = {
+                id: Date.now() + Math.random(),
+                name: name,
+                color: color,
+                totalTime: 0,
+                currentTime: 0,
+                totalStartTime: null,
+                currentStartTime: null,
+                element: null
+            };
+            players.push(player);
+            renderPlayerList();
+        }
+
+        function renderPlayerList() {
+            const list = document.getElementById('player-list');
+            list.innerHTML = '';
+            players.forEach(player => {
+                const li = document.createElement('li');
+                const nameInput = document.createElement('input');
+                nameInput.type = 'text';
+                nameInput.placeholder = 'Name';
+                nameInput.value = player.name;
+                nameInput.oninput = () => player.name = nameInput.value;
+
+                const colorInput = document.createElement('input');
+                colorInput.type = 'color';
+                colorInput.value = rgbToHex(player.color);
+                colorInput.oninput = () => player.color = colorInput.value;
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = 'Delete';
+                deleteBtn.onclick = () => {
+                    players = players.filter(p => p.id !== player.id);
+                    renderPlayerList();
+                };
+
+                li.appendChild(nameInput);
+                li.appendChild(colorInput);
+                li.appendChild(deleteBtn);
+                list.appendChild(li);
+            });
+        }
+
+        function rgbToHex(rgb) {
+            const result = rgb.match(/\d+/g).map(x => parseInt(x).toString(16).padStart(2, '0')).join('');
+            return `#${result}`;
+        }
+
+        function startGame() {
+            longThinkingTime = (parseFloat(document.getElementById('long-thinking-time').value) || 0) * 60000;
+            if (players.length === 0) {
+                alert('Please add at least one player.');
+                return;
+            }
+            document.getElementById('setup').style.display = 'none';
+            document.getElementById('clock-stage').style.display = 'block';
+            renderClocks();
+        }
+
+        function renderClocks() {
+            const clockContainer = document.getElementById('clocks');
+            clockContainer.innerHTML = '';
+            players.forEach((player, index) => {
+                const clockDiv = document.createElement('div');
+                clockDiv.className = 'clock';
+                clockDiv.classList.add(player === activePlayer ? 'active' : 'inactive');
+                clockDiv.style.background = player.color;
+                clockDiv.innerHTML = `
+                <div class="name">${index + 1}. ${player.name || 'Player'}</div>
+                <div class="total-time">Total: ${formatTime(player.totalTime)}</div>
+                <div class="current-time">Current: ${formatTime(player.currentTime)}</div>
+            `;
+                clockDiv.onclick = () => activateClock(player);
+                clockDiv.draggable = true;
+                clockDiv.ondragstart = (e) => dragStart(e, player);
+                clockDiv.ondragover = (e) => e.preventDefault();
+                clockDiv.ondrop = (e) => drop(e, player);
+                player.element = clockDiv;
+
+                // Set the current-time color appropriately
+                const currentEl = clockDiv.querySelector('.current-time');
+                if (player === activePlayer) {
+                    // Active player's color will be updated in updateClock()
+                } else {
+                    currentEl.style.color = '#888'; // Default color for inactive players
+                }
+
+                clockContainer.appendChild(clockDiv);
+            });
+        }
+
+        function activateClock(player) {
+            if (activePlayer && activePlayer.id === player.id) return;
+            pauseAll();
+            activePlayer = player;
+            player.currentTime = 0;
+            player.currentStartTime = Date.now();
+            player.totalStartTime = player.totalStartTime || Date.now() - player.totalTime;
+            player.element.classList.remove('inactive');
+            player.element.classList.add('active');
+            updateClock(player); // Immediate update to synchronize timers
+            intervals[player.id] = setInterval(() => updateClock(player), 10);
+        }
+
+        function updateClock(player) {
+            const now = Date.now();
+            player.totalTime = now - player.totalStartTime;
+            player.currentTime = now - player.currentStartTime;
+
+            const totalFormatted = formatTime(player.totalTime);
+            const currentFormatted = formatTime(player.currentTime);
+
+            player.element.querySelector('.total-time').textContent = `Total: ${totalFormatted}`;
+            const currentEl = player.element.querySelector('.current-time');
+            currentEl.textContent = `Current: ${currentFormatted}`;
+
+            if (longThinkingTime > 0) {
+                let fraction = player.currentTime / longThinkingTime;
+                if (fraction > 1) fraction = 1;
+                const color = getGradientColor('#80FF80', '#FF8080', fraction);
+                currentEl.style.color = color;
+            } else {
+                currentEl.style.color = '#80FF80'; // default to muted green
+            }
+        }
+
+        function formatTime(ms) {
+            const milliseconds = ms % 1000;
+            const totalSeconds = Math.floor(ms / 1000);
+            const seconds = totalSeconds % 60;
+            const totalMinutes = Math.floor(totalSeconds / 60);
+            const minutes = totalMinutes % 60;
+            const hours = Math.floor(totalMinutes / 60);
+
+            return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}:${pad(milliseconds, 3)}`;
+        }
+
+        function pad(number, digits = 2) {
+            return number.toString().padStart(digits, '0');
+        }
+
+        function pauseAll() {
+            for (let id in intervals) {
+                clearInterval(intervals[id]);
+            }
+            intervals = {};
+            players.forEach(player => {
+                if (player.currentStartTime) {
+                    player.currentTime = Date.now() - player.currentStartTime;
+                    player.totalTime = Date.now() - player.totalStartTime;
+                    player.currentStartTime = null;
+                }
+                if (player.element) {
+                    player.element.classList.remove('active');
+                    player.element.classList.add('inactive');
+                    const currentEl = player.element.querySelector('.current-time');
+                    currentEl.textContent = `Current: ${formatTime(player.currentTime)}`;
+                    currentEl.style.color = '#888';
+                }
+            });
+            activePlayer = null;
+        }
+
+        function resetAll() {
+            pauseAll();
+            players.forEach(player => {
+                player.totalTime = 0;
+                player.currentTime = 0;
+                player.totalStartTime = null;
+                player.currentStartTime = null;
+                if (player.element) {
+                    player.element.querySelector('.total-time').textContent = 'Total: 00:00:00:000';
+                    player.element.querySelector('.current-time').textContent = 'Current: 00:00:00:000';
+                    player.element.querySelector('.current-time').style.color = '#888';
+                }
+            });
+        }
+
+        function endGame() {
+            pauseAll();
+            players.sort((a, b) => a.totalTime - b.totalTime);
+            const resultsBody = document.getElementById('results-body');
+            resultsBody.innerHTML = '';
+            players.forEach(player => {
+                const tr = document.createElement('tr');
+                const nameTd = document.createElement('td');
+                nameTd.textContent = player.name || 'Player';
+                const timeTd = document.createElement('td');
+                timeTd.textContent = formatTime(player.totalTime);
+                tr.appendChild(nameTd);
+                tr.appendChild(timeTd);
+                resultsBody.appendChild(tr);
+            });
+            document.getElementById('clock-stage').style.display = 'none';
+            document.getElementById('results').style.display = 'block';
+        }
+
+        function backToSetup() {
+            pauseAll();
+            document.getElementById('clock-stage').style.display = 'none';
+            document.getElementById('setup').style.display = 'block';
+        }
+
+        function restartSetup() {
+            players = [];
+            renderPlayerList();
+            document.getElementById('results').style.display = 'none';
+            document.getElementById('setup').style.display = 'block';
+        }
+
+        let draggedPlayer = null;
+
+        function dragStart(e, player) {
+            draggedPlayer = player;
+        }
+
+        function drop(e, targetPlayer) {
+            const fromIndex = players.indexOf(draggedPlayer);
+            const toIndex = players.indexOf(targetPlayer);
+            players.splice(fromIndex, 1);
+            players.splice(toIndex, 0, draggedPlayer);
+            renderClocks();
+        }
+
+        function getGradientColor(startColor, endColor, fraction) {
+            const start = hexToRgb(startColor);
+            const end = hexToRgb(endColor);
+            const r = Math.round(start.r + (end.r - start.r) * fraction);
+            const g = Math.round(start.g + (end.g - start.g) * fraction);
+            const b = Math.round(start.b + (end.b - start.b) * fraction);
+            return `rgb(${r},${g},${b})`;
+        }
+
+        function hexToRgb(hex) {
+            hex = hex.replace(/^#/, '');
+            if (hex.length === 3) {
+                hex = hex.split('').map(c => c + c).join('');
+            }
+            const bigint = parseInt(hex, 16);
+            return {
+                r: (bigint >> 16) & 255,
+                g: (bigint >> 8) & 255,
+                b: bigint & 255
+            };
+        }
+
+        document.getElementById('add-player').onclick = () => addPlayer();
+        document.getElementById('start-game').onclick = startGame;
+        document.getElementById('pause-all').onclick = pauseAll;
+        document.getElementById('reset-all').onclick = resetAll;
+        document.getElementById('end-game').onclick = endGame;
+        document.getElementById('back-to-setup').onclick = backToSetup;
+        document.getElementById('restart-setup').onclick = restartSetup;
+    </script>
+
+</body>
+
+</html>
