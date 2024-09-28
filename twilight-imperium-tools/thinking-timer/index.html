@@ -233,7 +233,6 @@
                 color: color,
                 totalTime: 0,
                 currentTime: 0,
-                totalStartTime: null,
                 currentStartTime: null,
                 element: null
             };
@@ -295,10 +294,20 @@
                 clockDiv.className = 'clock';
                 clockDiv.classList.add(player === activePlayer ? 'active' : 'inactive');
                 clockDiv.style.background = player.color;
+                let totalTime, currentTime;
+                if (player === activePlayer && player.currentStartTime) {
+                    const now = Date.now();
+                    const elapsed = now - player.currentStartTime;
+                    totalTime = player.totalTime + elapsed;
+                    currentTime = elapsed;
+                } else {
+                    totalTime = player.totalTime;
+                    currentTime = player.currentTime;
+                }
                 clockDiv.innerHTML = `
                 <div class="name">${index + 1}. ${player.name || 'Player'}</div>
-                <div class="total-time">Total: ${formatTime(player.totalTime)}</div>
-                <div class="current-time">Current: ${formatTime(player.currentTime)}</div>
+                <div class="total-time">Total: ${formatTime(totalTime)}</div>
+                <div class="current-time">Current: ${formatTime(currentTime)}</div>
             `;
                 clockDiv.onclick = () => activateClock(player);
                 clockDiv.draggable = true;
@@ -323,9 +332,7 @@
             if (activePlayer && activePlayer.id === player.id) return;
             pauseAll();
             activePlayer = player;
-            player.currentTime = 0;
             player.currentStartTime = Date.now();
-            player.totalStartTime = player.totalStartTime || Date.now() - player.totalTime;
             player.element.classList.remove('inactive');
             player.element.classList.add('active');
             updateClock(player); // Immediate update to synchronize timers
@@ -334,24 +341,27 @@
 
         function updateClock(player) {
             const now = Date.now();
-            player.totalTime = now - player.totalStartTime;
-            player.currentTime = now - player.currentStartTime;
+            const elapsed = now - player.currentStartTime;
+            const totalTime = player.totalTime + elapsed;
 
-            const totalFormatted = formatTime(player.totalTime);
-            const currentFormatted = formatTime(player.currentTime);
+            const totalFormatted = formatTime(totalTime);
+            const currentFormatted = formatTime(elapsed);
 
             player.element.querySelector('.total-time').textContent = `Total: ${totalFormatted}`;
             const currentEl = player.element.querySelector('.current-time');
             currentEl.textContent = `Current: ${currentFormatted}`;
 
             if (longThinkingTime > 0) {
-                let fraction = player.currentTime / longThinkingTime;
+                let fraction = elapsed / longThinkingTime;
                 if (fraction > 1) fraction = 1;
                 const color = getGradientColor('#80FF80', '#FF8080', fraction);
                 currentEl.style.color = color;
             } else {
                 currentEl.style.color = '#80FF80'; // default to muted green
             }
+
+            // Update player's currentTime for display when inactive
+            player.currentTime = elapsed;
         }
 
         function formatTime(ms) {
@@ -374,12 +384,13 @@
                 clearInterval(intervals[id]);
             }
             intervals = {};
+            if (activePlayer && activePlayer.currentStartTime) {
+                const duration = Date.now() - activePlayer.currentStartTime;
+                activePlayer.totalTime += duration;
+                activePlayer.currentTime = duration;
+                activePlayer.currentStartTime = null;
+            }
             players.forEach(player => {
-                if (player.currentStartTime) {
-                    player.currentTime = Date.now() - player.currentStartTime;
-                    player.totalTime = Date.now() - player.totalStartTime;
-                    player.currentStartTime = null;
-                }
                 if (player.element) {
                     player.element.classList.remove('active');
                     player.element.classList.add('inactive');
@@ -396,7 +407,6 @@
             players.forEach(player => {
                 player.totalTime = 0;
                 player.currentTime = 0;
-                player.totalStartTime = null;
                 player.currentStartTime = null;
                 if (player.element) {
                     player.element.querySelector('.total-time').textContent = 'Total: 00:00:00:000';
