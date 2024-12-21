@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <!-- Ensure UTF-8 charset so special symbols display properly -->
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Civilization 6 Draft Picker</title>
+    <style>
+        /* Base reset and fonts */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: sans-serif;
+        }
+
+        body {
+            background: #0f2027;
+            /* Civ6-like dark background */
+            background: linear-gradient(to right, #0f2027, #203a43, #2c5364);
+            color: #f0e6d2;
+            /* Light golden text color */
+            padding: 1rem;
+        }
+
+        h1,
+        h2,
+        h3,
+        h4 {
+            margin-bottom: 0.5rem;
+            font-family: 'Georgia', serif;
+            color: #ffcb77;
+            /* Golden heading */
+        }
+
+        /* Layout Containers */
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background-color: rgba(255, 255, 255, 0.05);
+            padding: 1rem 2rem;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Menu styling */
+        .menu-section {
+            display: none;
+            margin-bottom: 1rem;
+        }
+
+        .menu-section.active {
+            display: block;
+        }
+
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            margin-bottom: 1rem;
+            align-items: center;
+        }
+
+        .row label {
+            width: 140px;
+            margin-right: 0.5rem;
+        }
+
+        .row input[type="text"],
+        .row input[type="number"] {
+            flex: 1;
+            min-width: 0;
+            padding: 0.5rem;
+            margin: 0.2rem 0;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+
+        .row input[type="checkbox"] {
+            margin-right: 0.5rem;
+            transform: scale(1.2);
+        }
+
+        /* Buttons */
+        button {
+            background-color: #ffcb77;
+            color: #2c5364;
+            border: none;
+            border-radius: 4px;
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            margin: 0.2rem;
+            font-weight: bold;
+        }
+
+        button:hover {
+            background-color: #ffc25e;
+        }
+
+        .delete-btn {
+            background-color: #ff6b6b;
+            color: #fff;
+        }
+
+        .delete-btn:hover {
+            background-color: #ff4f4f;
+        }
+
+        .small-btn {
+            padding: 0.3rem 0.6rem;
+            font-size: 0.9rem;
+        }
+
+        /* Leader dropdown */
+        .dropdown-container {
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            margin: 0.5rem 0;
+            padding: 0.5rem;
+        }
+
+        .dropdown-label {
+            cursor: pointer;
+            font-weight: bold;
+            margin-right: 1rem;
+        }
+
+        .leader-list {
+            display: none;
+            flex-wrap: wrap;
+            margin-top: 0.5rem;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .leader-list.active {
+            display: flex;
+        }
+
+        .leader-item {
+            width: 50%;
+            display: flex;
+            align-items: center;
+            margin-bottom: 0.3rem;
+        }
+
+        .leader-item input {
+            margin-right: 0.5rem;
+        }
+
+        /* Draft phase containers */
+        .draft-phase,
+        .results-phase {
+            display: none;
+        }
+
+        .draft-phase.active,
+        .results-phase.active {
+            display: block;
+        }
+
+        /* Ban/Pick UI */
+        .scrollable-leaders {
+            max-height: 180px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 0.5rem;
+            margin-top: 1rem;
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .scrollable-leaders div {
+            margin: 0.2rem 0;
+            cursor: pointer;
+        }
+
+        .highlighted {
+            background-color: rgba(255, 203, 119, 0.6);
+        }
+
+        /* Draft summary area */
+        #draftSummary {
+            margin-top: 1rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+            padding-top: 1rem;
+        }
+
+        .summary-player {
+            margin-bottom: 0.5rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .row label {
+                width: 100%;
+                margin-bottom: 0.3rem;
+            }
+
+            .row {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .leader-item {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container" id="app">
+        <!-- MENU VIEW -->
+        <div id="menuView" class="menu-section active">
+            <h1>Civilization VI Draft Picker</h1>
+            <!-- PLAYERS INPUT -->
+            <h2>Players</h2>
+            <div id="playersContainer"></div>
+            <button id="addPlayerBtn">+ Add Player</button>
+
+            <!-- BANS PER PLAYER -->
+            <div class="row">
+                <label for="bansInput">Bans per player:</label>
+                <input type="number" id="bansInput" placeholder="3" value="3" min="0" />
+            </div>
+            <!-- DRAFT CHOICES PER PLAYER -->
+            <div class="row">
+                <label for="choicesInput">Draft choices:</label>
+                <input type="number" id="choicesInput" placeholder="5" value="5" min="0" />
+            </div>
+            <!-- LEADER POOL -->
+            <h2>Leader Pool</h2>
+            <div class="dropdown-container">
+                <span class="dropdown-label" id="toggleLeaders">Select/Deselect Leaders</span>
+                <div class="leader-list" id="leaderList"></div>
+                <button class="small-btn" id="selectAllBtn">Select All</button>
+                <button class="small-btn" id="deselectAllBtn">Deselect All</button>
+            </div>
+            <!-- SHUFFLE PLAYERS -->
+            <div class="row">
+                <label for="shuffleInput">Shuffle players?</label>
+                <input type="checkbox" id="shuffleInput" />
+            </div>
+            <!-- START DRAFT BUTTON -->
+            <button id="startDraftBtn">Start Draft</button>
+        </div>
+
+        <!-- DRAFT PHASE VIEW -->
+        <div id="draftView" class="draft-phase">
+            <h2 id="phaseTitle">Ban Phase</h2>
+            <div id="playerTurn" style="margin-bottom:0.5rem;"></div>
+            <div class="scrollable-leaders" id="availableLeadersList"></div>
+            <div>
+                <button id="confirmBtn">Confirm</button>
+                <button id="randomBtn">Random</button>
+                <button id="passBtn">Pass</button>
+            </div>
+            <div id="draftSummary"></div>
+        </div>
+
+        <!-- RESULTS PHASE VIEW -->
+        <div id="resultsView" class="results-phase">
+            <h2>Draft Results</h2>
+            <div id="resultsContainer"></div>
+            <button id="newDraftBtn">Return to Beginning</button>
+        </div>
+    </div>
+
+    <script>
+        /* ===============================
+           DATA & STATE
+        =============================== */
+
+        // We'll store these with correct Unicode in a UTF-8-encoded file
+        const allLeaders = [
+            "Abraham Lincoln (American)",
+            "Alexander (Macedonian)",
+            "Amanitore (Nubian)",
+            "Ambiorix (Gallic)",
+            "Bà Triệu (Vietnamese)",
+            "Basil II (Byzantine)",
+            "Catherine de Medici (French)",
+            "Chandragupta (Indian)",
+            "Cleopatra (Egyptian)",
+            "Cyrus (Persian)",
+            "Dido (Phoenician)",
+            "Eleanor of Aquitaine (English / French)",
+            "Elizabeth I (English)",
+            "Frederick Barbarossa (German)",
+            "Gandhi (Indian)",
+            "Genghis Khan (Mongolian)",
+            "Gilgamesh (Sumerian)",
+            "Gitarja (Indonesian)",
+            "Gorgo (Greek)",
+            "Hammurabi (Babylonian)",
+            "Harald Hardrada (Norwegian)",
+            "Hojo Tokimune (Japanese)",
+            "Jadwiga (Polish)",
+            "Jayavarman VII (Khmer)",
+            "João III (Portuguese)",
+            "John Curtin (Australian)",
+            "Julius Caesar (Roman)",
+            "Kristina (Swedish)",
+            "Kublai Khan (Chinese / Mongolian)",
+            "Kupe (Māori)",
+            "Lady Six Sky (Mayan)",
+            "Lautaro (Mapuche)",
+            "Ludwig II (German)",
+            "Mansa Musa (Malian)",
+            "Matthias Corvinus (Hungarian)",
+            "Menelik II (Ethiopian)",
+            "Montezuma (Aztec)",
+            "Mvemba a Nzinga (Kongolese)",
+            "Nader Shah (Persian)",
+            "Nzinga Mbande (Kongolese)",
+            "Pachacuti (Incan)",
+            "Pedro II (Brazilian)",
+            "Pericles (Greek)",
+            "Peter (Russian)",
+            "Philip II (Spanish)",
+            "Poundmaker (Cree)",
+            "Qin Shi Huang (Chinese)",
+            "Ramses II (Egyptian)",
+            "Robert the Bruce (Scottish)",
+            "Saladin (Arabian)",
+            "Sejong (Korean)",
+            "Seondeok (Korean)",
+            "Shaka (Zulu)",
+            "Simón Bolívar (Gran Colombian)",
+            "Suleiman (Ottoman)",
+            "Sundiata Keita (Malian)",
+            "Tamar (Georgian)",
+            "Teddy Roosevelt (American)",
+            "Theodora (Byzantine)",
+            "Tokugawa (Japanese)",
+            "Tomyris (Scythian)",
+            "Trajan (Roman)",
+            "Victoria (English)",
+            "Wilfrid Laurier (Canadian)",
+            "Wilhelmina (Dutch)",
+            "Wu Zetian (Chinese)",
+            "Yongle (Chinese)"
+        ];
+
+        // Internal representation of each leader in the pool
+        let leadersPool = allLeaders.map(name => {
+            return {name, selected: true};
+        });
+
+        // The dynamic list of players
+        let players = [];
+        /* Each player will be an object of the form:
+           {
+             id: number,
+             name: string,
+             bans: string[],
+             pick: string|null
+           }
+        */
+
+        // Draft configuration
+        let bansPerPlayer = 3;
+        let choicesPerPlayer = 5; // If 0 => from all possible choices
+        let shufflePlayers = false;
+
+        // Controls which phase we are in: 'ban' or 'pick'
+        let currentPhase = 'ban';
+        let currentPlayerIndex = 0;
+        let totalBansCount = 0; // total times we have performed a ban
+        let totalPickCount = 0; // total times we have performed a pick
+
+        // Cache DOM elements
+        const menuView = document.getElementById('menuView');
+        const draftView = document.getElementById('draftView');
+        const resultsView = document.getElementById('resultsView');
+        const playersContainer = document.getElementById('playersContainer');
+        const addPlayerBtn = document.getElementById('addPlayerBtn');
+        const bansInput = document.getElementById('bansInput');
+        const choicesInput = document.getElementById('choicesInput');
+        const shuffleInput = document.getElementById('shuffleInput');
+        const startDraftBtn = document.getElementById('startDraftBtn');
+        const toggleLeaders = document.getElementById('toggleLeaders');
+        const leaderList = document.getElementById('leaderList');
+        const selectAllBtn = document.getElementById('selectAllBtn');
+        const deselectAllBtn = document.getElementById('deselectAllBtn');
+
+        // Draft phase elements
+        const phaseTitle = document.getElementById('phaseTitle');
+        const playerTurn = document.getElementById('playerTurn');
+        const availableLeadersList = document.getElementById('availableLeadersList');
+        const confirmBtn = document.getElementById('confirmBtn');
+        const randomBtn = document.getElementById('randomBtn');
+        const passBtn = document.getElementById('passBtn');
+        const draftSummary = document.getElementById('draftSummary');
+
+        // Results
+        const resultsContainer = document.getElementById('resultsContainer');
+        const newDraftBtn = document.getElementById('newDraftBtn');
+
+
+        /* ===============================
+           MENU / SETUP LOGIC
+        =============================== */
+
+        function renderPlayersList() {
+            playersContainer.innerHTML = '';
+            players.forEach((p, idx) => {
+                const row = document.createElement('div');
+                row.classList.add('row');
+
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.value = p.name;
+                input.placeholder = `Player ${p.id}`;
+                input.addEventListener('input', () => {
+                    p.name = input.value;
+                });
+
+                const delBtn = document.createElement('button');
+                delBtn.textContent = 'Delete';
+                delBtn.classList.add('delete-btn');
+                delBtn.addEventListener('click', () => {
+                    players.splice(idx, 1);
+                    renderPlayersList();
+                });
+
+                row.appendChild(input);
+                row.appendChild(delBtn);
+                playersContainer.appendChild(row);
+            });
+        }
+
+        function addPlayer() {
+            const newId = players.length + 1;
+            players.push({
+                id: newId,
+                name: `Player ${newId}`,
+                bans: [],
+                pick: null
+            });
+            renderPlayersList();
+        }
+
+        function renderLeaderPool() {
+            // Show/hide based on .selected
+            leaderList.innerHTML = '';
+            leadersPool.forEach((leaderObj) => {
+                const item = document.createElement('div');
+                item.classList.add('leader-item');
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.checked = leaderObj.selected;
+                checkbox.addEventListener('change', () => {
+                    leaderObj.selected = checkbox.checked;
+                });
+
+                const label = document.createElement('label');
+                // Use textContent or innerHTML carefully; here we can use innerHTML since we trust the array
+                label.innerHTML = leaderObj.name;
+
+                item.appendChild(checkbox);
+                item.appendChild(label);
+                leaderList.appendChild(item);
+            });
+        }
+
+        function initMenu() {
+            // Initialize a default player if none exist
+            if (players.length === 0) {
+                addPlayer();
+            }
+            renderPlayersList();
+            renderLeaderPool();
+        }
+
+        /* ===============================
+           TRANSITIONS
+        =============================== */
+        function showMenu() {
+            menuView.classList.add('active');
+            draftView.classList.remove('active');
+            resultsView.classList.remove('active');
+        }
+
+        function showDraftView() {
+            menuView.classList.remove('active');
+            draftView.classList.add('active');
+            resultsView.classList.remove('active');
+        }
+
+        function showResults() {
+            menuView.classList.remove('active');
+            draftView.classList.remove('active');
+            resultsView.classList.add('active');
+        }
+
+        /* ===============================
+           DRAFT LOGIC
+        =============================== */
+
+        function startDraft() {
+            // Gather config
+            bansPerPlayer = parseInt(bansInput.value) || 0;
+            choicesPerPlayer = parseInt(choicesInput.value) || 0;
+            shufflePlayers = shuffleInput.checked;
+
+            // Filter out only selected leaders
+            leadersPool = leadersPool.filter(l => l.selected);
+
+            // If no leaders are selected, revert to full set
+            if (leadersPool.length === 0) {
+                leadersPool = allLeaders.map(name => ({name, selected: true}));
+            }
+
+            // Shuffle or maintain order
+            if (shufflePlayers) {
+                players.sort(() => Math.random() - 0.5);
+            }
+
+            // Reset any old data
+            players.forEach(p => {
+                p.bans = [];
+                p.pick = null;
+            });
+
+            currentPhase = bansPerPlayer > 0 ? 'ban' : 'pick';
+            totalBansCount = 0;
+            totalPickCount = 0;
+            currentPlayerIndex = 0;
+
+            showDraftView();
+            renderDraftPhase();
+        }
+
+        function renderDraftPhase() {
+            phaseTitle.textContent = currentPhase === 'ban' ? 'Ban Phase' : 'Pick Phase';
+
+            // If ban phase
+            if (currentPhase === 'ban') {
+                if (totalBansCount >= bansPerPlayer * players.length) {
+                    // Move to pick phase
+                    currentPhase = 'pick';
+                    currentPlayerIndex = 0;
+                    renderDraftPhase();
+                    return;
+                }
+            } else {
+                // pick phase
+                if (totalPickCount >= players.length) {
+                    // All players have picked, show results
+                    finalizeDraft();
+                    return;
+                }
+            }
+
+            // Show current player's turn
+            const currentPlayer = players[currentPlayerIndex];
+            playerTurn.textContent = `${currentPlayer.name}, it's your turn to ${currentPhase}.`;
+
+            // Render available leaders (a subset if necessary)
+            renderAvailableLeaders();
+
+            // Render summary of bans and picks so far
+            renderDraftSummary();
+        }
+
+        function renderAvailableLeaders() {
+            availableLeadersList.innerHTML = '';
+            const stillAvailableLeaders = getStillAvailableLeaders();
+
+            stillAvailableLeaders.forEach(ld => {
+                const divEl = document.createElement('div');
+                divEl.innerHTML = ld;
+                divEl.addEventListener('click', () => {
+                    // highlight
+                    const alreadyHighlighted = divEl.classList.contains('highlighted');
+                    [...availableLeadersList.children].forEach(child => child.classList.remove('highlighted'));
+                    if (!alreadyHighlighted) {
+                        divEl.classList.add('highlighted');
+                    }
+                });
+                availableLeadersList.appendChild(divEl);
+            });
+        }
+
+        function getStillAvailableLeaders() {
+            // Return leaders that are not banned and not picked
+            const bannedLeaders = players.flatMap(p => p.bans);
+            const pickedLeaders = players.map(p => p.pick).filter(Boolean);
+            let still = leadersPool
+                .map(l => l.name)
+                .filter(name => !bannedLeaders.includes(name))
+                .filter(name => !pickedLeaders.includes(name));
+
+            // In pick phase, we might want to show only a random subset (choicesPerPlayer)
+            if (currentPhase === 'pick' && choicesPerPlayer > 0) {
+                // We'll present a random subset of size = choicesPerPlayer
+                if (still.length > choicesPerPlayer) {
+                    // Shuffle the still array
+                    const shuffled = [...still].sort(() => Math.random() - 0.5);
+                    still = shuffled.slice(0, choicesPerPlayer);
+                }
+            }
+            return still;
+        }
+
+        function confirmSelection() {
+            // Find highlighted
+            const highlighted = [...availableLeadersList.children].find(child => child.classList.contains('highlighted'));
+            if (!highlighted) {
+                // No selection => do nothing or pass
+                return;
+            }
+            const chosenLeader = highlighted.textContent;
+            applyChoice(chosenLeader);
+        }
+
+        function passSelection() {
+            // Ban/pick nothing
+            applyChoice(null);
+        }
+
+        function randomSelection() {
+            // IMPORTANT: random from the currently displayed options only
+            const displayedLeaders = [...availableLeadersList.children].map(child => child.textContent);
+            if (displayedLeaders.length === 0) {
+                applyChoice(null);
+                return;
+            }
+            const randomIdx = Math.floor(Math.random() * displayedLeaders.length);
+            const chosenLeader = displayedLeaders[randomIdx];
+            applyChoice(chosenLeader);
+        }
+
+        function applyChoice(chosenLeader) {
+            const currentPlayer = players[currentPlayerIndex];
+
+            if (currentPhase === 'ban') {
+                if (chosenLeader) {
+                    currentPlayer.bans.push(chosenLeader);
+                }
+                totalBansCount++;
+            } else {
+                // pick phase
+                if (chosenLeader) {
+                    currentPlayer.pick = chosenLeader;
+                }
+                totalPickCount++;
+            }
+
+            // Move to next player
+            currentPlayerIndex++;
+            if (currentPlayerIndex >= players.length) {
+                currentPlayerIndex = 0;
+            }
+            renderDraftPhase();
+        }
+
+        function renderDraftSummary() {
+            draftSummary.innerHTML = '';
+            players.forEach(player => {
+                const playerDiv = document.createElement('div');
+                playerDiv.classList.add('summary-player');
+                const bansText = player.bans.length ? `Bans: ${player.bans.join(', ')}` : 'Bans: (none)';
+                const pickText = player.pick ? `Pick: ${player.pick}` : 'Pick: (none)';
+                playerDiv.innerHTML = `<strong>${player.name}</strong> - ${bansText} | ${pickText}`;
+                draftSummary.appendChild(playerDiv);
+            });
+        }
+
+        function finalizeDraft() {
+            // Move to results
+            showResults();
+            renderResults();
+        }
+
+        function renderResults() {
+            resultsContainer.innerHTML = '';
+            players.forEach(p => {
+                const pEl = document.createElement('div');
+                pEl.style.marginBottom = '1rem';
+
+                const nameEl = document.createElement('h3');
+                nameEl.textContent = p.name;
+                pEl.appendChild(nameEl);
+
+                if (p.bans && p.bans.length > 0) {
+                    const banEl = document.createElement('p');
+                    banEl.textContent = `Banned: ${p.bans.join(', ')}`;
+                    pEl.appendChild(banEl);
+                } else {
+                    const banEl = document.createElement('p');
+                    banEl.textContent = `Banned: (none)`;
+                    pEl.appendChild(banEl);
+                }
+                if (p.pick) {
+                    const pickEl = document.createElement('p');
+                    pickEl.textContent = `Picked: ${p.pick}`;
+                    pEl.appendChild(pickEl);
+                } else {
+                    const pickEl = document.createElement('p');
+                    pickEl.textContent = `Picked: (none)`;
+                    pEl.appendChild(pickEl);
+                }
+                resultsContainer.appendChild(pEl);
+            });
+        }
+
+        /* ===============================
+           EVENT LISTENERS
+        =============================== */
+
+        addPlayerBtn.addEventListener('click', addPlayer);
+
+        startDraftBtn.addEventListener('click', () => {
+            if (players.length < 1) {
+                alert('Please add at least one player.');
+                return;
+            }
+            startDraft();
+        });
+
+        toggleLeaders.addEventListener('click', () => {
+            leaderList.classList.toggle('active');
+        });
+
+        selectAllBtn.addEventListener('click', () => {
+            leadersPool.forEach(ld => ld.selected = true);
+            renderLeaderPool();
+        });
+
+        deselectAllBtn.addEventListener('click', () => {
+            leadersPool.forEach(ld => ld.selected = false);
+            renderLeaderPool();
+        });
+
+        // Ban/Pick UI
+        confirmBtn.addEventListener('click', confirmSelection);
+        randomBtn.addEventListener('click', randomSelection);
+        passBtn.addEventListener('click', passSelection);
+
+        // Results - new draft
+        newDraftBtn.addEventListener('click', () => {
+            // Easiest approach: Reload the page to reset everything
+            location.reload();
+        });
+
+        /* ===============================
+           INIT
+        =============================== */
+        initMenu();
+    </script>
+</body>
+
+</html>
