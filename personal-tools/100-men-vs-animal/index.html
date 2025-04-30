@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>Arena – Tiger / Gorilla vs Men (v16)</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <style>
+        /* layout & colours */
+        html,
+        body {
+            margin: 0;
+            height: 100%;
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column
+        }
+
+        #controls {
+            background: #222;
+            color: #eee;
+            padding: 6px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center
+        }
+
+        #controls input,
+        #controls select,
+        #controls button {
+            font-size: 14px;
+            padding: 4px 6px
+        }
+
+        #outer {
+            flex: 1;
+            display: flex;
+            min-height: 0
+        }
+
+        #statsWrap {
+            width: 260px;
+            border-right: 2px solid #999;
+            display: flex;
+            flex-direction: column
+        }
+
+        #help {
+            font-size: 13px;
+            background: #eef;
+            border-bottom: 2px solid #999;
+            padding: 4px
+        }
+
+        #help summary {
+            cursor: pointer;
+            font-weight: 700
+        }
+
+        #help ul {
+            margin: 4px 0 0 18px;
+            padding: 0
+        }
+
+        #stats {
+            flex: 1;
+            overflow-y: auto;
+            font-size: 13px;
+            background: #f7f7f7;
+            padding: 6px
+        }
+
+        #arenaWrap {
+            flex: 1;
+            display: flex;
+            min-width: 0
+        }
+
+        #arena {
+            flex: 1;
+            background: #fafafa;
+            border-left: 2px solid #999;
+            cursor: grab
+        }
+
+        #log {
+            width: 320px;
+            overflow-y: auto;
+            border-left: 2px solid #999;
+            font-size: 13px;
+            padding: 6px;
+            background: #f1f1f1
+        }
+
+        svg {
+            width: 100%;
+            height: 100%;
+            touch-action: none
+        }
+
+        .man {
+            fill: #666
+        }
+
+        .man.wounded {
+            fill: #e9a23b
+        }
+
+        .man.fly {
+            fill: #6ec6ff
+        }
+
+        /* flying men visually distinct */
+        .dead .man {
+            fill: #c8c8c8
+        }
+
+        .beast.tiger {
+            fill: #c84b00
+        }
+
+        .beast.gorilla {
+            fill: #3a3a3a
+        }
+
+        .label {
+            font-size: 9px;
+            text-anchor: middle;
+            dominant-baseline: middle;
+            pointer-events: none;
+            fill: #000
+        }
+
+        .hidden {
+            display: none
+        }
+
+        .logLine {
+            margin: 2px 0
+        }
+    </style>
+</head>
+
+<body>
+    <!-- controls -->
+    <div id="controls">
+        <label>Men: <input id="menN" type="number" min="10" max="300" value="100"></label>
+        <label>Beast:<select id="beastType">
+                <option value="tiger">Siberian Tiger</option>
+                <option value="gorilla">Silverback Gorilla</option>
+            </select></label>
+        <label>Spawn:<select id="spawnType">
+                <option value="edgeRandom" selected>Edge Random</option>
+                <option value="random">Random</option>
+                <option value="edgePoint">One Edge Point</option>
+            </select></label>
+        <label>Men Strat:<select id="menStrat">
+                <option value="assault">Assault</option>
+                <option value="grapple">Grapple</option>
+                <option value="rotate">Circle-Run</option>
+                <option value="tire">Tire</option>
+                <option value="hitrun">Hit-Run</option>
+            </select></label>
+        <button id="regen">Regenerate</button><button id="start">Start</button><button id="pause"
+            disabled>Pause</button><button id="reset" disabled>Reset</button>
+        <span id="timer">0.0 s</span>
+    </div>
+
+    <!-- layout -->
+    <div id="outer">
+        <div id="statsWrap">
+            <details id="help" open>
+                <summary>? shortcuts</summary>
+                <ul>
+                    <li>Space – labels</li>
+                    <li>Esc – clear</li>
+                    <li>Click – inspect</li>
+                    <li>Drag void – pan</li>
+                    <li>Wheel – zoom</li>
+                </ul>
+            </details>
+            <div id="stats"><em>Click a creature to inspect.</em></div>
+        </div>
+        <div id="arenaWrap">
+            <div id="arena"><svg id="svg"></svg></div>
+            <div id="log"></div>
+        </div>
+    </div>
+
+    <script>
+        /* == constants (all used) == */
+        const FPS = 25, DT = 1 / FPS, STEP = 1000 / FPS, R_ARENA = 350;
+        const MAN_R = 6, BEAST_R = {gorilla: 14, tiger: 16};
+        const MASS = {man: 90, gorilla: 200, tiger: 310};
+        const ACC = 0.9, FRICTION = 0.8, VMAX = {man: 5, gorilla: 4, tiger: 6};
+        const ST_MAX = 100, ST_MOVE = .12, ST_REC = .25, ST_SPRINT = .6, ST_ATK_M = 5, ST_ATK_B = 4;
+        const MAX_LOSS = .0002, MAX_DROP = .2;
+        const BASE_KILL = {tiger: .82, gorilla: .38}, BASE_WOUND = {tiger: .52, gorilla: .55};
+        const HIT_BASE = .15, FLANK = .15, GRAP = .05, WOUND_P = .2, HIT_CAP = .65;
+        const GRAP_R = 18, PIN = {gorilla: 10, tiger: 8}, LATCH_DRAIN = .5;
+        const TIRED = 20, RECOVER = 35, SPRINT_ON = {gorilla: .9, tiger: .8}, SPRINT_OFF = {gorilla: .6, tiger: .5};
+        const SWIPE_MAX = 3, SWIPE_ARC = Math.PI / 2, SWIPE_COST = .2;
+        const THROW_V = 8, FLY_DECAY = .95, MIN_FLY_SPEED = .4, FLY_TRANSFER = .2, DAMAGE_SPEED = 4;
+        const REP_PUSH_MM = 1.0, REP_PUSH_MB = 1.5, REP_K_MM = .4, REP_K_MB = .8;
+
+        /* speeds */
+        const V = {man: 1.4, run: 1.8, sprint: 2.7, tiger: 2.9, gorilla: 2.0};
+
+        /* == DOM & state == */
+        const $ = id => document.getElementById(id);
+        const svg = $('svg'), logDiv = $('log'), stats = $('stats'), timer = $('timer');
+        const menN = $('menN'), beastSel = $('beastType'), spawnSel = $('spawnType'), stratSel = $('menStrat');
+        const startB = $('start'), pauseB = $('pause'), resetB = $('reset'), regenB = $('regen');
+        let men = [], beast = {}, running = false, loop = null, time = 0, labels = false, sel = null, vp;
+        let panX = 0, panY = 0, zoom = 1, dragging = false, drag0 = {x: 0, y: 0};
+
+        /* == helpers == */
+        const rnd = n => Math.random() * n, dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+        const clamp = (v, l, h) => v < l ? l : v > h ? h : v;
+        function make(t, a, txt) {const e = document.createElementNS('http://www.w3.org/2000/svg', t); for (const k in a) e.setAttribute(k, a[k]); if (txt) e.textContent = txt; return e;}
+        const emoji = k => ({kill: '??', wound: '??', hit: '?', swipe: '??', throw: '??', win: '?', lose: '?'}[k] || '');
+        function log(msg, e = '') {logDiv.prepend(Object.assign(document.createElement('div'), {className: 'logLine', textContent: `${emoji(e)} ${msg}`}));}
+        const setView = () => vp.setAttribute('transform', `translate(${panX} ${panY}) scale(${zoom})`);
+        function integrate(e) {e.x += e.vx; e.y += e.vy; const r = e.type ? BEAST_R[e.type] : MAN_R; const d = Math.hypot(e.x, e.y); if (d > R_ARENA - r) {const nx = e.x / d, ny = e.y / d; e.x = nx * (R_ARENA - r); e.y = ny * (R_ARENA - r);} }
+
+        /* == build & reset == */
+        function build() {
+            const N = +menN.value, sp = spawnSel.value; men = [];
+            for (let i = 0; i < N; i++) {
+                const a = rnd(Math.PI * 2), r = (sp === 'random' ? rnd(R_ARENA - 30) : R_ARENA - 10);
+                let x = Math.cos(a) * r, y = Math.sin(a) * r;
+                if (sp === 'edgePoint') {x += rnd(30) - 15; y += rnd(30) - 15;}
+                men.push({x, y, vx: 0, vy: 0, st: ST_MAX, latched: false, flying: false, hitClock: 0, status: 'alive', cd: 0, hover: false});
+            }
+            beast = {x: 0, y: 0, vx: 0, vy: 0, st: ST_MAX, hp: beastSel.value === 'tiger' ? 40 : 60, type: beastSel.value, cd: 0};
+        }
+        function regenerate() {
+            clearInterval(loop); running = false; time = 0; timer.textContent = '0.0 s'; logDiv.innerHTML = '';
+            svg.innerHTML = ''; vp = make('g', {}); svg.appendChild(vp); panX = panY = 0; zoom = 1; setView();
+            build(); drawStatic(); hookUI(); drawDyn();
+        }
+
+        /* == draw == */
+        function drawStatic() {
+            vp.innerHTML = ''; vp.appendChild(make('circle', {r: R_ARENA, fill: 'none', stroke: '#bbb', 'stroke-width': 2}));
+            men.forEach((m, i) => {
+                const g = make('g', {}); g.appendChild(make('text', {class: 'label hidden', id: `st${i}`, x: m.x, y: m.y - 12}));
+                g.appendChild(make('circle', {id: `m${i}`, class: 'man', r: MAN_R, cx: m.x, cy: m.y}));
+                g.appendChild(make('text', {class: 'label hidden', id: `hp${i}`, x: m.x, y: m.y + 12}));
+                g.onclick = _ => {sel = {t: 'm', i}; updateStats();}; g.onmouseenter = _ => {m.hover = true; drawDyn();}; g.onmouseleave = _ => {m.hover = false; drawDyn();};
+                vp.appendChild(g);
+            });
+            const br = BEAST_R[beast.type];
+            const gB = make('g', {}); gB.appendChild(make('text', {class: 'label hidden', id: 'bst', x: 0, y: -br - 10}));
+            gB.appendChild(make('circle', {id: 'beast', class: `beast ${beast.type}`, r: br, cx: 0, cy: 0}));
+            gB.appendChild(make('text', {class: 'label', id: 'blet', x: 0, y: 4}, beast.type === 'tiger' ? 'T' : 'G'));
+            gB.appendChild(make('text', {class: 'label hidden', id: 'bhp', x: 0, y: br + 10}));
+            vp.appendChild(gB);
+            svg.setAttribute('viewBox', `${-R_ARENA} ${-R_ARENA} ${R_ARENA * 2} ${R_ARENA * 2}`);
+        }
+        function drawDyn() {
+            men.forEach((m, i) => {
+                const c = $('m' + i), st = $('st' + i), hp = $('hp' + i);
+                if (m.status === 'dead') {c.parentNode.classList.add('dead'); return;}
+                c.setAttribute('cx', m.x); c.setAttribute('cy', m.y);
+                c.setAttribute('class', `man ${m.status === 'wounded' ? 'wounded' : ''} ${m.flying ? 'fly' : ''}`);
+                st.setAttribute('x', m.x); st.setAttribute('y', m.y - 12); st.textContent = 'Sta ' + Math.round(m.st);
+                hp.setAttribute('x', m.x); hp.setAttribute('y', m.y + 12); hp.textContent = m.latched ? '??' : '';
+                const show = labels || m.hover; st.classList.toggle('hidden', !show); hp.classList.toggle('hidden', !show);
+            });
+            $('beast').setAttribute('cx', beast.x); $('beast').setAttribute('cy', beast.y);
+            $('blet').setAttribute('x', beast.x); $('blet').setAttribute('y', beast.y + 4);
+            $('bst').setAttribute('x', beast.x); $('bst').setAttribute('y', beast.y - BEAST_R[beast.type] - 10); $('bst').textContent = 'Sta ' + Math.round(beast.st);
+            $('bhp').setAttribute('x', beast.x); $('bhp').setAttribute('y', beast.y + BEAST_R[beast.type] + 10); $('bhp').textContent = 'HP ' + beast.hp;
+        }
+
+        /* == repulsion helper == */
+        function repel(a, b, rA, rB, push, imp) {
+            const dx = a.x - b.x, dy = a.y - b.y, d = Math.hypot(dx, dy) || 1, over = rA + rB - d; if (over <= 0) return;
+            const nx = dx / d, ny = dy / d, c = over / 2 + .01;
+            a.x += nx * c; a.y += ny * c; b.x -= nx * c; b.y -= ny * c;
+            const k = over * imp; a.vx += nx * k / MASS[a.type || 'man']; a.vy += ny * k / MASS[a.type || 'man'];
+            b.vx -= nx * k / MASS[b.type || 'man']; b.vy -= ny * k / MASS[b.type || 'man'];
+        }
+
+        /* == line-of-sight checker == */
+        function isBlocked(m) {
+            const dx = beast.x - m.x, dy = beast.y - m.y, len = Math.hypot(dx, dy);
+            return men.some(o => o !== m && !o.flying && !o.latched && o.status === 'alive' && dist(o, m) < len
+                && Math.abs((o.x - m.x) * dy - (o.y - m.y) * dx) / len < MAN_R * 2);
+        }
+
+        /* == physics & AI == */
+        function move() {
+            const strat = stratSel.value;
+            /* men loop */
+            men.forEach((m, i) => {
+                if (m.status === 'dead') return;
+
+                /* flying */
+                if (m.flying) {
+                    m.vx *= FLY_DECAY; m.vy *= FLY_DECAY;
+                    if (Math.hypot(m.vx, m.vy) < MIN_FLY_SPEED) {m.flying = false;}
+                    integrate(m); return;
+                }
+
+                /* latched */
+                if (m.latched) {m.x = beast.x + m.offX; m.y = beast.y + m.offY; m.vx = beast.vx; m.vy = beast.vy; m.st = clamp(m.st - ST_MOVE, 0, ST_MAX); return;}
+
+                /* desire vector */
+                const dx = beast.x - m.x, dy = beast.y - m.y, distB = dist(m, beast) || 1;
+                let ax = 0, ay = 0, eff = (m.status === 'wounded' ? 0.2 : 1);
+
+                /* LoS sidestep */
+                if (isBlocked(m)) {const side = Math.random() < .5 ? 1 : -1; ax += -dy / distB * ACC * side * eff; ay += dx / distB * ACC * side * eff;}
+
+                switch (strat) {
+                    case 'assault': ax += dx / distB * ACC * eff; ay += dy / distB * ACC * eff; break;
+                    case 'grapple':
+                        if (distB > GRAP_R) {ax += dx / distB * ACC * eff; ay += dy / distB * ACC * eff;}
+                        else {m.latched = true; m.offX = dx; m.offY = dy; return;}
+                        break;
+                    case 'rotate': {
+                        const tang = Math.PI / 2, px = Math.cos(tang) * dx - Math.sin(tang) * dy, py = Math.sin(tang) * dx + Math.cos(tang) * dy;
+                        ax += px / distB * ACC * eff; ay += py / distB * ACC * eff;
+                        if (distB < BEAST_R[beast.type] + 15) {ax -= dx / distB * ACC * eff; ay -= dy / distB * ACC * eff;}
+                        break;
+                    }
+                    case 'tire':
+                        if (m.st > beast.st + 5) {ax += dx / distB * ACC * eff; ay += dy / distB * ACC * eff;}
+                        else {ax -= dx / distB * ACC * eff; ay -= dy / distB * ACC * eff;}
+                        break;
+                    case 'hitrun':
+                        if (m.hitClock > 0) {ax -= dx / distB * ACC * eff; ay -= dy / distB * ACC * eff; m.hitClock--;}
+                        else if (distB > BEAST_R[beast.type] + 25) {ax += dx / distB * ACC * eff; ay += dy / distB * ACC * eff;}
+                        else m.hitClock = 25;
+                        break;
+                }
+                m.vx = (m.vx + ax) * FRICTION; m.vy = (m.vy + ay) * FRICTION; integrate(m);
+                m.st = clamp(m.st - (ax || ay ? ST_MOVE : 0) + (!ax && !ay ? ST_REC : 0), 0, ST_MAX);
+            });
+
+            /* beast motion */
+            const latched = men.filter(m => m.latched).length;
+            beast.st = clamp(beast.st - latched * LATCH_DRAIN + ST_REC, 0, ST_MAX);
+            let bx = 0, by = 0;
+            const pursuers = men.filter(m => m.status === 'alive' && !m.latched);
+            if (pursuers.length) {
+                pursuers.sort((a, b) => dist(a, beast) - dist(b, beast));
+                const t = pursuers[0], d = dist(beast, t) || 1;
+                bx = (t.x - beast.x) / d * ACC; by = (t.y - beast.y) / d * ACC;
+            }
+            beast.vx = (beast.vx + bx) * FRICTION; beast.vy = (beast.vy + by) * FRICTION; integrate(beast);
+
+            /* repulsion */
+            const ground = men.filter(m => !m.latched && !m.flying && m.status !== 'dead');
+            for (let i = 0; i < ground.length; i++) {
+                const a = ground[i];
+                for (let j = i + 1; j < ground.length; j++)repel(a, ground[j], MAN_R, MAN_R, REP_PUSH_MM, REP_K_MM);
+                repel(a, beast, MAN_R, BEAST_R[beast.type], REP_PUSH_MB, REP_K_MB);
+            }
+        }
+
+        /* == abilities & combat == */
+        function launchFlying(m, ang) {
+            m.flying = true; m.vx = Math.cos(ang) * THROW_V; m.vy = Math.sin(ang) * THROW_V; m.status = 'wounded';
+        }
+        function gorillaThrow(v) {log('Throw', 'throw'); launchFlying(v, Math.atan2(v.y - beast.y, v.x - beast.x));}
+        function tigerSwipe(list) {log('Swipe', 'swipe'); list.slice(0, SWIPE_MAX).forEach(m => m.status = 'wounded');}
+
+        function combat() {
+            /* flying collisions at high speed */
+            men.forEach(f => {
+                if (!f.flying) return;
+                men.forEach(o => {
+                    if (o === f || o.status === 'dead' || o.flying) return;
+                    if (dist(f, o) <= MAN_R * 2 && Math.hypot(f.vx, f.vy) > DAMAGE_SPEED) {
+                        if (Math.hypot(f.vx, f.vy) * FLY_TRANSFER > VMAX.man) {o.flying = true;}
+                        o.vx += f.vx * FLY_TRANSFER; o.vy += f.vy * FLY_TRANSFER;
+                        if (Math.hypot(f.vx, f.vy) > DAMAGE_SPEED * 1.2) o.status = 'wounded';
+                        f.vx *= .6; f.vy *= .6;
+                    }
+                });
+            });
+
+            /* beast attack */
+            if (beast.cd <= 0) {
+                const near = men.filter(m => m.status === 'alive' && !m.latched && !m.flying && dist(m, beast) <= BEAST_R[beast.type] + MAN_R + 3);
+                if (near.length) {
+                    if (beast.type === 'gorilla') gorillaThrow(near[0]); else tigerSwipe(near);
+                    beast.cd = 12;
+                }
+            } else beast.cd--;
+
+            /* men attack */
+            men.forEach(m => {
+                if (m.status !== 'alive' || m.latched || m.flying || dist(m, beast) > BEAST_R[beast.type] + MAN_R + 3) return;
+                if (Math.random() < HIT_BASE * (m.status === 'wounded' ? WOUND_P : 1)) {beast.hp--; log('Hit', 'hit');}
+            });
+
+            if (beast.hp <= 0 && running) {log('Beast down', 'win'); stop();}
+        }
+
+        /* == loop & UI == */
+        function tick() {time += DT; timer.textContent = time.toFixed(1) + ' s'; move(); combat(); drawDyn();}
+        function start() {if (!running) {loop = setInterval(tick, STEP); running = true;} }
+        function stop() {clearInterval(loop); running = false;}
+
+        function hookUI() {
+            document.onkeydown = e => {if (e.code === 'Space') {labels = !labels; drawDyn();} if (e.code === 'Escape') {sel = null;} };
+            regenB.onclick = regenerate;
+            startB.onclick = _ => {startB.disabled = true; pauseB.disabled = false; resetB.disabled = false; regenB.disabled = true; start();};
+            pauseB.onclick = _ => {running ? stop() : start(); pauseB.textContent = running ? 'Pause' : 'Resume';};
+            resetB.onclick = _ => {stop(); startB.disabled = false; pauseB.disabled = true; resetB.disabled = true; regenB.disabled = false; pauseB.textContent = 'Pause'; regenerate();};
+            [menN, beastSel, spawnSel, stratSel].forEach(el => el.onchange = regenerate);
+            svg.onpointerdown = e => {if (e.target !== svg) return; dragging = true; drag0 = {x: e.clientX - panX, y: e.clientY - panY}; svg.setPointerCapture(e.pointerId); arena.style.cursor = 'grabbing';};
+            svg.onpointermove = e => {if (!dragging) return; panX = e.clientX - drag0.x; panY = e.clientY - drag0.y; setView();};
+            svg.onpointerup = _ => {dragging = false; arena.style.cursor = 'grab';};
+            svg.onwheel = e => {
+                e.preventDefault(); const s = e.deltaY > 0 ? 0.9 : 1.1; zoom = clamp(zoom * s, .3, 3);
+                const p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY; const inv = svg.getScreenCTM().inverse(); const w = p.matrixTransform(inv);
+                panX = (w.x - panX) * (1 - s) + panX; panY = (w.y - panY) * (1 - s) + panY; setView();
+            }, {passive: false};
+        }
+
+        /* boot */
+        regenerate();
+    </script>
+</body>
+
+</html>
