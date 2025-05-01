@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="utf-8">
-    <title>Arena � Tiger / Gorilla vs Men (v16)</title>
+    <title>Arena – Animal vs 100 Men</title>
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <style>
         /* layout & colours */
@@ -63,7 +63,7 @@
             padding: 0
         }
 
-        #stats {
+        #statsPanel {
             flex: 1;
             overflow-y: auto;
             font-size: 13px;
@@ -81,10 +81,9 @@
             flex: 1;
             background: #fafafa;
             border-left: 2px solid #999;
-            cursor: grab
         }
 
-        #log {
+        #logContainer {
             width: 320px;
             overflow-y: auto;
             border-left: 2px solid #999;
@@ -99,31 +98,40 @@
             touch-action: none
         }
 
-        .man {
+        .fighter {
             fill: #666
         }
 
-        .man.wounded {
+        .fighter.wounded {
             fill: #e9a23b
         }
 
-        .man.fly {
+        .fighter.fly {
             fill: #6ec6ff
         }
 
+        .fighter.sprint {
+            stroke: gold;
+            stroke-width: 2;
+        }
+
         /* flying men visually distinct */
-        .dead .man {
+        .dead .fighter {
             fill: #c8c8c8
         }
 
-        .beast.tiger {
+        .beastEntity.tiger {
             fill: #c84b00
         }
 
-        .beast.gorilla {
+        .beastEntity.gorilla {
             fill: #3a3a3a
         }
-
+        .beastEntity.sprint {
+            stroke: red;
+            stroke-width: 2;
+        }
+        
         .label {
             font-size: 9px;
             text-anchor: middle;
@@ -145,17 +153,18 @@
 <body>
     <!-- controls -->
     <div id="controls">
-        <label>Men: <input id="menN" type="number" min="10" max="300" value="100"></label>
-        <label>Beast:<select id="beastType">
+        <label>Men: <input id="fightersN" type="number" min="10" max="300" value="100"></label>
+        <label>Beast:<select id="beastEntityType">
+                <option value="gorilla" selected>Silverback Gorilla</option>
                 <option value="tiger">Siberian Tiger</option>
-                <option value="gorilla">Silverback Gorilla</option>
+                <option value="trex">T-Rex</option>
             </select></label>
-        <label>Spawn:<select id="spawnType">
+        <label>Spawn:<select id="spawnSel">
                 <option value="edgeRandom" selected>Edge Random</option>
                 <option value="random">Random</option>
                 <option value="edgePoint">One Edge Point</option>
             </select></label>
-        <label>Men Strat:<select id="menStrat">
+        <label>Men Strat:<select id="fightersStrat">
                 <option value="assault">Assault</option>
                 <option value="grapple">Grapple</option>
                 <option value="rotate">Circle-Run</option>
@@ -164,268 +173,1063 @@
             </select></label>
         <button id="regen">Regenerate</button><button id="start">Start</button><button id="pause"
             disabled>Pause</button><button id="reset" disabled>Reset</button>
-        <span id="timer">0.0 s</span>
+        <span id="timerDisplay">0.0 s</span>
     </div>
 
     <!-- layout -->
     <div id="outer">
         <div id="statsWrap">
             <details id="help" open>
-                <summary>? shortcuts</summary>
+                <summary>🛈 shortcuts</summary>
                 <ul>
-                    <li>Space � labels</li>
-                    <li>Esc � clear</li>
-                    <li>Click � inspect</li>
-                    <li>Drag void � pan</li>
-                    <li>Wheel � zoom</li>
+                    <li>Space – labels</li>
+                    <li>Esc – clear</li>
+                    <li>Click – inspect</li>
+                    <li>Drag void – pan</li>
+                    <li>Wheel – zoom</li>
                 </ul>
             </details>
-            <div id="stats"><em>Click a creature to inspect.</em></div>
+            <div id="statsPanel"><em>Click a creature to inspect.</em></div>
         </div>
         <div id="arenaWrap">
             <div id="arena"><svg id="svg"></svg></div>
-            <div id="log"></div>
+            <div id="logContainer"></div>
         </div>
     </div>
 
     <script>
-        /* == constants (all used) == */
-        const FPS = 25, DT = 1 / FPS, STEP = 1000 / FPS, R_ARENA = 350;
-        const MAN_R = 6, BEAST_R = {gorilla: 14, tiger: 16};
-        const MASS = {man: 90, gorilla: 200, tiger: 310};
-        const ACC = 0.9, FRICTION = 0.8, VMAX = {man: 5, gorilla: 4, tiger: 6};
-        const ST_MAX = 100, ST_MOVE = .12, ST_REC = .25, ST_SPRINT = .6, ST_ATK_M = 5, ST_ATK_B = 4;
-        const MAX_LOSS = .0002, MAX_DROP = .2;
-        const BASE_KILL = {tiger: .82, gorilla: .38}, BASE_WOUND = {tiger: .52, gorilla: .55};
-        const HIT_BASE = .15, FLANK = .15, GRAP = .05, WOUND_P = .2, HIT_CAP = .65;
-        const GRAP_R = 18, PIN = {gorilla: 10, tiger: 8}, LATCH_DRAIN = .5;
-        const TIRED = 20, RECOVER = 35, SPRINT_ON = {gorilla: .9, tiger: .8}, SPRINT_OFF = {gorilla: .6, tiger: .5};
-        const SWIPE_MAX = 3, SWIPE_ARC = Math.PI / 2, SWIPE_COST = .2;
-        const THROW_V = 8, FLY_DECAY = .95, MIN_FLY_SPEED = .4, FLY_TRANSFER = .2, DAMAGE_SPEED = 4;
-        const REP_PUSH_MM = 1.0, REP_PUSH_MB = 1.5, REP_K_MM = .4, REP_K_MB = .8;
 
-        /* speeds */
-        const V = {man: 1.4, run: 1.8, sprint: 2.7, tiger: 2.9, gorilla: 2.0};
+    /* == constants (all used) == */
+    const FPS = 25, DT = 1 / FPS, STEP = 1000 / FPS, R_ARENA = 350;
+    const MAN_R = 6, 
+    BEAST_R = {gorilla: 14, tiger: 16, trex: 35};
+    const MASS = {fighter: 90, gorilla: 250, tiger: 310, trex: 8000};
+    const ACC = {
+            fighter: 0.9,
+            gorilla: 0.6,
+            tiger: 0.75,
+            trex: 0.2
+        };
+    const FRICTION = 0.85, VMAX = {fighter: 5, gorilla: 4, tiger: 6, trex: 6};
+    const V_BEAST = {
+            gorilla: {walk: 1.2, sprint: 2.0},
+            tiger: {walk: 1.8, sprint: 3.5},
+            trex: {walk: 1.0, sprint: 3.5}
+        };
+    const ST_SPRINT_B = {gorilla: 0.8, tiger: 1.2, trex: 2.5}; // stamina drain per tick when sprinting
+    const ST_MAX = 100, ST_MOVE = .12, ST_REC = .3, ST_SPRINT = 1.0, ST_ATK_M = 5, ST_ATK_B = 4;
+    const MAX_LOSS = .0002, MAX_DROP = .2;
+    const BASE_KILL = {tiger: .9, gorilla: .6, trex: 1}, BASE_WOUND = {tiger: .6, gorilla: .5, trex: 0.1};
+    const HIT_BASE = .15, FLANK = .15, GRAP = .05, WOUND_P = .2, HIT_CAP = .65;
+    const GRAP_R = 18, PIN = {gorilla: 10, tiger: 8}, LATCH_DRAIN = .6;
+    const TIRED = 20, RECOVER = 35, SPRINT_ON = {gorilla: .9, tiger: .8}, SPRINT_OFF = {gorilla: .6, tiger: .5};
+    const SPRINT_START = 50;  // Must reach this to start sprinting again
+    const SPRINT_STOP = 10;   // Drops below this to stop sprinting
+    const SWIPE_MAX = 3, SWIPE_ARC = Math.PI / 2, SWIPE_COST = .2;
+    const THROW_V = 12, FLY_DECAY = .92, MIN_FLY_SPEED = .4, FLY_TRANSFER = .2, DAMAGE_SPEED = 4;
+    const REP_PUSH_MM = 1.0, REP_PUSH_MB = 1.5, REP_K_MM = .4, REP_K_MB = .8;
 
-        /* == DOM & state == */
-        const $ = id => document.getElementById(id);
-        const svg = $('svg'), logDiv = $('log'), stats = $('stats'), timer = $('timer');
-        const menN = $('menN'), beastSel = $('beastType'), spawnSel = $('spawnType'), stratSel = $('menStrat');
-        const startB = $('start'), pauseB = $('pause'), resetB = $('reset'), regenB = $('regen');
-        let men = [], beast = {}, running = false, loop = null, time = 0, labels = false, sel = null, vp;
-        let panX = 0, panY = 0, zoom = 1, dragging = false, drag0 = {x: 0, y: 0};
+    /* speeds */
+    const V = {fighter: 1.4, run: 1.8, sprint: 2.7, tiger: 2.9, gorilla: 2.0};
 
-        /* == helpers == */
-        const rnd = n => Math.random() * n, dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-        const clamp = (v, l, h) => v < l ? l : v > h ? h : v;
-        function make(t, a, txt) {const e = document.createElementNS('http://www.w3.org/2000/svg', t); for (const k in a) e.setAttribute(k, a[k]); if (txt) e.textContent = txt; return e;}
-        const emoji = k => ({kill: '??', wound: '??', hit: '?', swipe: '??', throw: '??', win: '?', lose: '?'}[k] || '');
-        function log(msg, e = '') {logDiv.prepend(Object.assign(document.createElement('div'), {className: 'logLine', textContent: `${emoji(e)} ${msg}`}));}
-        const setView = () => vp.setAttribute('transform', `translate(${panX} ${panY}) scale(${zoom})`);
-        function integrate(e) {e.x += e.vx; e.y += e.vy; const r = e.type ? BEAST_R[e.type] : MAN_R; const d = Math.hypot(e.x, e.y); if (d > R_ARENA - r) {const nx = e.x / d, ny = e.y / d; e.x = nx * (R_ARENA - r); e.y = ny * (R_ARENA - r);} }
+    /* == DOM & state == */
+    const $ = id => document.getElementById(id);
+    const svg = $('svg'), logContainer = $('logContainer'), statsPanel = $('statsPanel'), timerDisplay = $('timerDisplay');
+    const fightersN = $('fightersN'), beastSel = $('beastEntityType'), spawnSel = $('spawnSel'), stratSel = $('fightersStrat');
+    const startB = $('start'), pauseB = $('pause'), resetB = $('reset'), regenB = $('regen');
+    let fighters = [], beastEntity = {}, running = false, loop = null, time = 0, labels = false, selectedEntity = null, viewportGroup;
+    let panX = 0, panY = 0, zoom = 1, dragging = false, drag0 = {x: 0, y: 0};
+    let pointerDownAt = null;
+    const CLICK_THRESHOLD = 5; // pixels of movement to count as drag
 
-        /* == build & reset == */
-        function build() {
-            const N = +menN.value, sp = spawnSel.value; men = [];
-            for (let i = 0; i < N; i++) {
-                const a = rnd(Math.PI * 2), r = (sp === 'random' ? rnd(R_ARENA - 30) : R_ARENA - 10);
-                let x = Math.cos(a) * r, y = Math.sin(a) * r;
-                if (sp === 'edgePoint') {x += rnd(30) - 15; y += rnd(30) - 15;}
-                men.push({x, y, vx: 0, vy: 0, st: ST_MAX, latched: false, flying: false, hitClock: 0, status: 'alive', cd: 0, hover: false});
+    /* == helpers == */
+    const rnd = n => Math.random() * n, dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    const clamp = (v, l, h) => v < l ? l : v > h ? h : v;
+    function make(t, a, txt) {const e = document.createElementNS('http://www.w3.org/2000/svg', t); for (const k in a) e.setAttribute(k, a[k]); if (txt) e.textContent = txt; return e;}
+    const emoji = k => ({kill: '💀', wound: '🤕', hit: '👊', swipe: '🦾', throw: '🌀', win: '🏆', lose: '💢'}[k] || '❓');
+    function log(msg, e = '', detail = '') {
+        const div = document.createElement('div');
+        div.className = 'logLine';
+
+        const t = time?.toFixed(1) ?? '0.0';
+        div.innerHTML = `<strong>[${t}s] ${emoji(e)} ${msg}</strong>${detail ? `<span style="color:gray; font-size: 90%"> — ${detail}</span>` : ''}`;
+
+        logContainer.prepend(div);
+    }
+    const setView = () => viewportGroup.setAttribute('transform', `translate(${panX} ${panY}) scale(${zoom})`);
+    function integrate(e) {
+        e.x += e.vx; 
+        e.y += e.vy; 
+        const r = e.type ? BEAST_R[e.type] : MAN_R; 
+        const d = Math.hypot(e.x, e.y); 
+        if (d > R_ARENA - r) {
+            const nx = e.x / d, ny = e.y / d; e.x = nx * (R_ARENA - r); 
+            e.y = ny * (R_ARENA - r);
+        } 
+    }
+    function updateStats() {
+            if (!selectedEntity) {
+                statsPanel.innerHTML = '<em>Click a creature to inspect.</em>';
+                return;
             }
-            beast = {x: 0, y: 0, vx: 0, vy: 0, st: ST_MAX, hp: beastSel.value === 'tiger' ? 40 : 60, type: beastSel.value, cd: 0};
-        }
-        function regenerate() {
-            clearInterval(loop); running = false; time = 0; timer.textContent = '0.0 s'; logDiv.innerHTML = '';
-            svg.innerHTML = ''; vp = make('g', {}); svg.appendChild(vp); panX = panY = 0; zoom = 1; setView();
-            build(); drawStatic(); hookUI(); drawDyn();
-        }
 
-        /* == draw == */
-        function drawStatic() {
-            vp.innerHTML = ''; vp.appendChild(make('circle', {r: R_ARENA, fill: 'none', stroke: '#bbb', 'stroke-width': 2}));
-            men.forEach((m, i) => {
-                const g = make('g', {}); g.appendChild(make('text', {class: 'label hidden', id: `st${i}`, x: m.x, y: m.y - 12}));
-                g.appendChild(make('circle', {id: `m${i}`, class: 'man', r: MAN_R, cx: m.x, cy: m.y}));
-                g.appendChild(make('text', {class: 'label hidden', id: `hp${i}`, x: m.x, y: m.y + 12}));
-                g.onclick = _ => {sel = {t: 'm', i}; updateStats();}; g.onmouseenter = _ => {m.hover = true; drawDyn();}; g.onmouseleave = _ => {m.hover = false; drawDyn();};
-                vp.appendChild(g);
-            });
-            const br = BEAST_R[beast.type];
-            const gB = make('g', {}); gB.appendChild(make('text', {class: 'label hidden', id: 'bst', x: 0, y: -br - 10}));
-            gB.appendChild(make('circle', {id: 'beast', class: `beast ${beast.type}`, r: br, cx: 0, cy: 0}));
-            gB.appendChild(make('text', {class: 'label', id: 'blet', x: 0, y: 4}, beast.type === 'tiger' ? 'T' : 'G'));
-            gB.appendChild(make('text', {class: 'label hidden', id: 'bhp', x: 0, y: br + 10}));
-            vp.appendChild(gB);
-            svg.setAttribute('viewBox', `${-R_ARENA} ${-R_ARENA} ${R_ARENA * 2} ${R_ARENA * 2}`);
-        }
-        function drawDyn() {
-            men.forEach((m, i) => {
-                const c = $('m' + i), st = $('st' + i), hp = $('hp' + i);
-                if (m.status === 'dead') {c.parentNode.classList.add('dead'); return;}
-                c.setAttribute('cx', m.x); c.setAttribute('cy', m.y);
-                c.setAttribute('class', `man ${m.status === 'wounded' ? 'wounded' : ''} ${m.flying ? 'fly' : ''}`);
-                st.setAttribute('x', m.x); st.setAttribute('y', m.y - 12); st.textContent = 'Sta ' + Math.round(m.st);
-                hp.setAttribute('x', m.x); hp.setAttribute('y', m.y + 12); hp.textContent = m.latched ? '??' : '';
-                const show = labels || m.hover; st.classList.toggle('hidden', !show); hp.classList.toggle('hidden', !show);
-            });
-            $('beast').setAttribute('cx', beast.x); $('beast').setAttribute('cy', beast.y);
-            $('blet').setAttribute('x', beast.x); $('blet').setAttribute('y', beast.y + 4);
-            $('bst').setAttribute('x', beast.x); $('bst').setAttribute('y', beast.y - BEAST_R[beast.type] - 10); $('bst').textContent = 'Sta ' + Math.round(beast.st);
-            $('bhp').setAttribute('x', beast.x); $('bhp').setAttribute('y', beast.y + BEAST_R[beast.type] + 10); $('bhp').textContent = 'HP ' + beast.hp;
-        }
+            if (selectedEntity.t === 'm') {
+                const f = fighters[selectedEntity.i];
+                const mass = MASS[f.type || 'fighter'] ?? '?';
+                const acc = ACC[f.type || 'fighter'] ?? '?';
+                const vmax = VMAX[f.type || 'fighter'] ?? '?';
+                const vel = Math.hypot(f.vx ?? 0, f.vy ?? 0).toFixed(2);
+                const pos = `(${f.x.toFixed(1)}, ${f.y.toFixed(1)})`;
+                const role = f.latched ? 'Latched' : f.flying ? 'Flying' : 'Ground';
 
-        /* == repulsion helper == */
-        function repel(a, b, rA, rB, push, imp) {
-            const dx = a.x - b.x, dy = a.y - b.y, d = Math.hypot(dx, dy) || 1, over = rA + rB - d; if (over <= 0) return;
-            const nx = dx / d, ny = dy / d, c = over / 2 + .01;
-            a.x += nx * c; a.y += ny * c; b.x -= nx * c; b.y -= ny * c;
-            const k = over * imp; a.vx += nx * k / MASS[a.type || 'man']; a.vy += ny * k / MASS[a.type || 'man'];
-            b.vx -= nx * k / MASS[b.type || 'man']; b.vy -= ny * k / MASS[b.type || 'man'];
-        }
-
-        /* == line-of-sight checker == */
-        function isBlocked(m) {
-            const dx = beast.x - m.x, dy = beast.y - m.y, len = Math.hypot(dx, dy);
-            return men.some(o => o !== m && !o.flying && !o.latched && o.status === 'alive' && dist(o, m) < len
-                && Math.abs((o.x - m.x) * dy - (o.y - m.y) * dx) / len < MAN_R * 2);
-        }
-
-        /* == physics & AI == */
-        function move() {
-            const strat = stratSel.value;
-            /* men loop */
-            men.forEach((m, i) => {
-                if (m.status === 'dead') return;
-
-                /* flying */
-                if (m.flying) {
-                    m.vx *= FLY_DECAY; m.vy *= FLY_DECAY;
-                    if (Math.hypot(m.vx, m.vy) < MIN_FLY_SPEED) {m.flying = false;}
-                    integrate(m); return;
-                }
-
-                /* latched */
-                if (m.latched) {m.x = beast.x + m.offX; m.y = beast.y + m.offY; m.vx = beast.vx; m.vy = beast.vy; m.st = clamp(m.st - ST_MOVE, 0, ST_MAX); return;}
-
-                /* desire vector */
-                const dx = beast.x - m.x, dy = beast.y - m.y, distB = dist(m, beast) || 1;
-                let ax = 0, ay = 0, eff = (m.status === 'wounded' ? 0.2 : 1);
-
-                /* LoS sidestep */
-                if (isBlocked(m)) {const side = Math.random() < .5 ? 1 : -1; ax += -dy / distB * ACC * side * eff; ay += dx / distB * ACC * side * eff;}
-
-                switch (strat) {
-                    case 'assault': ax += dx / distB * ACC * eff; ay += dy / distB * ACC * eff; break;
-                    case 'grapple':
-                        if (distB > GRAP_R) {ax += dx / distB * ACC * eff; ay += dy / distB * ACC * eff;}
-                        else {m.latched = true; m.offX = dx; m.offY = dy; return;}
-                        break;
-                    case 'rotate': {
-                        const tang = Math.PI / 2, px = Math.cos(tang) * dx - Math.sin(tang) * dy, py = Math.sin(tang) * dx + Math.cos(tang) * dy;
-                        ax += px / distB * ACC * eff; ay += py / distB * ACC * eff;
-                        if (distB < BEAST_R[beast.type] + 15) {ax -= dx / distB * ACC * eff; ay -= dy / distB * ACC * eff;}
-                        break;
-                    }
-                    case 'tire':
-                        if (m.st > beast.st + 5) {ax += dx / distB * ACC * eff; ay += dy / distB * ACC * eff;}
-                        else {ax -= dx / distB * ACC * eff; ay -= dy / distB * ACC * eff;}
-                        break;
-                    case 'hitrun':
-                        if (m.hitClock > 0) {ax -= dx / distB * ACC * eff; ay -= dy / distB * ACC * eff; m.hitClock--;}
-                        else if (distB > BEAST_R[beast.type] + 25) {ax += dx / distB * ACC * eff; ay += dy / distB * ACC * eff;}
-                        else m.hitClock = 25;
-                        break;
-                }
-                m.vx = (m.vx + ax) * FRICTION; m.vy = (m.vy + ay) * FRICTION; integrate(m);
-                m.st = clamp(m.st - (ax || ay ? ST_MOVE : 0) + (!ax && !ay ? ST_REC : 0), 0, ST_MAX);
-            });
-
-            /* beast motion */
-            const latched = men.filter(m => m.latched).length;
-            beast.st = clamp(beast.st - latched * LATCH_DRAIN + ST_REC, 0, ST_MAX);
-            let bx = 0, by = 0;
-            const pursuers = men.filter(m => m.status === 'alive' && !m.latched);
-            if (pursuers.length) {
-                pursuers.sort((a, b) => dist(a, beast) - dist(b, beast));
-                const t = pursuers[0], d = dist(beast, t) || 1;
-                bx = (t.x - beast.x) / d * ACC; by = (t.y - beast.y) / d * ACC;
+                statsPanel.innerHTML = `
+            <b>Fighter #${selectedEntity.i}</b><br>
+            <b>Status:</b> ${f.status}<br>
+            <b>Role:</b> ${role}<br>
+            <b>Position:</b> ${pos}<br>
+            <b>Velocity:</b> ${vel}px/frame<br>
+            <b>Stamina:</b> ${Math.round(f.st)} / ${Math.round(f.maxSt)} / ${f.baseSt}<br>
+            <b>Cooldown:</b> ${f.cd}<br>
+            <b>Bleed:</b> ${f.bleed}<br>
+            <b>Mass:</b> ${mass}<br>
+            <b>Acceleration:</b> ${acc}<br>
+            <b>Max Speed:</b> ${vmax}<br>
+            <b>Sprinting:</b> ${f.sprinting ? 'Yes' : 'No'}<br>
+        `;
             }
-            beast.vx = (beast.vx + bx) * FRICTION; beast.vy = (beast.vy + by) * FRICTION; integrate(beast);
 
-            /* repulsion */
-            const ground = men.filter(m => !m.latched && !m.flying && m.status !== 'dead');
-            for (let i = 0; i < ground.length; i++) {
-                const a = ground[i];
-                for (let j = i + 1; j < ground.length; j++)repel(a, ground[j], MAN_R, MAN_R, REP_PUSH_MM, REP_K_MM);
-                repel(a, beast, MAN_R, BEAST_R[beast.type], REP_PUSH_MB, REP_K_MB);
+            if (selectedEntity.t === 'b') {
+            const hp = beastEntity.hp;
+            const type = beastEntity.type;
+            const mass = MASS[type] ?? '?';
+            const acc = ACC[type] ?? '?';
+            const vmax = VMAX[type] ?? '?';
+            const vel = Math.hypot(beastEntity.vx, beastEntity.vy).toFixed(2);
+            const pos = `(${beastEntity.x.toFixed(1)}, ${beastEntity.y.toFixed(1)})`;
+
+            const max = type === 'tiger' ? 40 : type === 'trex' ? 150 : 60;
+            const percent = Math.round(100 * hp / max);
+
+            statsPanel.innerHTML = `
+        <b>Beast (${type})</b><br>
+        <b>Status:</b> ${hp > 0 ? 'Alive' : 'Dead'}<br>
+        <b>Position:</b> ${pos}<br>
+        <b>Velocity:</b> ${vel}px/frame<br>
+        <b>HP:</b> ${hp} / ${max} (${percent}%)<br>
+        <b>Stamina:</b> ${Math.round(beastEntity.st)} / ${Math.round(beastEntity.maxSt)} / ${beastEntity.baseSt}<br>
+        <b>Cooldown:</b> ${beastEntity.cd}<br>
+        <b>Mass:</b> ${mass}<br>
+        <b>Acceleration:</b> ${acc}<br>
+        <b>Max Speed:</b> ${vmax}<br>
+        <b>Sprinting:</b> ${beastEntity.sprinting ? 'Yes' : 'No'}<br>
+    `;
+        }
+        }
+        
+    function useStamina(entity, amount) {
+        entity.st -= amount;
+        entity.maxSt = Math.max(entity.maxSt - amount * 0.02, 10); // 2% of amount used
+        entity.st = clamp(entity.st, 0, entity.maxSt);
+    }
+
+    /* == build & reset == */
+    function build() {
+        const N = +fightersN.value, sp = spawnSel.value; fighters = [];
+        let anchor = null;
+        if (sp === 'edgePoint') {
+            const angle = rnd(Math.PI * 2);
+            const r = R_ARENA - 10;
+            anchor = {
+                x: Math.cos(angle) * r,
+                y: Math.sin(angle) * r
+            };
+        }
+
+        for (let i = 0; i < N; i++) {
+            let x, y;
+            if (sp === 'random') {
+                const a = rnd(Math.PI * 2), r = rnd(R_ARENA - 30);
+                x = Math.cos(a) * r;
+                y = Math.sin(a) * r;
+            } else if (sp === 'edgeRandom') {
+                const a = rnd(Math.PI * 2), r = R_ARENA - 10;
+                x = Math.cos(a) * r;
+                y = Math.sin(a) * r;
+            } else if (sp === 'edgePoint') {
+                // tightly cluster near a shared edge anchor
+                x = anchor.x + rnd(12) - 6;
+                y = anchor.y + rnd(12) - 6;
             }
-        }
 
-        /* == abilities & combat == */
-        function launchFlying(m, ang) {
-            m.flying = true; m.vx = Math.cos(ang) * THROW_V; m.vy = Math.sin(ang) * THROW_V; m.status = 'wounded';
+            fighters.push({
+                x, y, vx: 0, vy: 0,
+                st: ST_MAX, maxSt: ST_MAX, baseSt: ST_MAX,
+                latched: false, flying: false, hitClock: 0,
+                status: 'alive', bleed: 0, cd: 0,
+                hover: false, sprinting: false, resting: false
+            });
         }
-        function gorillaThrow(v) {log('Throw', 'throw'); launchFlying(v, Math.atan2(v.y - beast.y, v.x - beast.x));}
-        function tigerSwipe(list) {log('Swipe', 'swipe'); list.slice(0, SWIPE_MAX).forEach(m => m.status = 'wounded');}
+        
+        const beastType = beastSel.value;
+        const hp = beastType === 'tiger' ? 40 : beastType === 'trex' ? 150 : 60;
+        beastEntity = {
+            x: 0, y: 0, vx: 0, vy: 0, 
+            st: ST_MAX, maxSt: ST_MAX, baseSt: ST_MAX,
+            hp: beastSel.value === 'tiger' ? 40 : 60, baseHp: beastSel.value === 'tiger' ? 40 : 60, 
+            type: beastType, cd: 0, sprinting:false
+        };
+    }
+    function regenerate() {
+        clearInterval(loop); running = false; time = 0; timerDisplay.textContent = '0.0 s'; logContainer.innerHTML = '';
+        svg.innerHTML = ''; 
+        viewportGroup = make('g', {id: 'viewportGroup'});
+        const bloodLayer = make('g', {id: 'bloodLayer'});
+        viewportGroup.appendChild(bloodLayer); // blood goes first, under tokens
+        svg.appendChild(viewportGroup); 
+        panX = panY = 0; zoom = 1; setView();
+        build(); 
+        selectedEntity = {t: 'b'};
+        drawStaticElements(); 
+        hookUI(); 
+        drawDynamic();
+    }
 
-        function combat() {
-            /* flying collisions at high speed */
-            men.forEach(f => {
-                if (!f.flying) return;
-                men.forEach(o => {
-                    if (o === f || o.status === 'dead' || o.flying) return;
-                    if (dist(f, o) <= MAN_R * 2 && Math.hypot(f.vx, f.vy) > DAMAGE_SPEED) {
-                        if (Math.hypot(f.vx, f.vy) * FLY_TRANSFER > VMAX.man) {o.flying = true;}
-                        o.vx += f.vx * FLY_TRANSFER; o.vy += f.vy * FLY_TRANSFER;
-                        if (Math.hypot(f.vx, f.vy) > DAMAGE_SPEED * 1.2) o.status = 'wounded';
-                        f.vx *= .6; f.vy *= .6;
-                    }
+    /* == draw == */
+    function drawStaticElements() {
+        [...viewportGroup.children].forEach(child => {
+            if (child.id !== 'bloodLayer') child.remove();
+        });
+        viewportGroup.appendChild(make('circle', {r: R_ARENA, fill: 'none', stroke: '#bbb', 'stroke-width': 2}));
+        fighters.forEach((m, i) => {
+            const g = make('g', {}); g.appendChild(make('text', {class: 'label hidden', id: `st${i}`, x: m.x, y: m.y - 12}));
+            g.appendChild(make('circle', {id: `m${i}`, class: 'fighter', r: MAN_R, cx: m.x, cy: m.y}));
+            g.appendChild(make('text', {class: 'label hidden', id: `hp${i}`, x: m.x, y: m.y + 12}));
+            g.onclick = e => {
+                e.stopPropagation();
+                selectedEntity = {t: 'm', i};
+                updateStats();
+            };
+            g.onmouseenter = _ => {m.hover = true; drawDynamic();}; g.onmouseleave = _ => {m.hover = false; drawDynamic();};
+            viewportGroup.appendChild(g);
+        });
+        const br = BEAST_R[beastEntity.type];
+        const gB = make('g', {}); gB.appendChild(make('text', {class: 'label hidden', id: 'bst', x: 0, y: -br - 10}));
+        const beastCircle = make('circle', {
+            id: 'beastEntity',
+            r: br,
+            cx: 0,
+            cy: 0
+        });
+        beastCircle.onclick = e => {
+            e.stopPropagation(); // prevents bubbling to background
+            selectedEntity = {t: 'b'};
+            updateStats();
+        };
+        beastCircle.setAttribute('class', `beastEntity ${beastEntity.type} ${beastEntity.sprinting ? 'sprint' : ''}`);
+        gB.appendChild(beastCircle);
+        const beastLabel = make('text', {class: 'label', id: 'blet', x: 0, y: 4});
+        beastLabel.textContent = beastEntity.type === 'tiger' ? '🐯' :
+            beastEntity.type === 'gorilla' ? '🦍' :
+                '🦖';
+        gB.appendChild(beastLabel);
+        gB.appendChild(make('text', {class: 'label hidden', id: 'bhp', x: 0, y: br + 10}));
+        viewportGroup.appendChild(gB);
+        svg.setAttribute('viewBox', `${-R_ARENA} ${-R_ARENA} ${R_ARENA * 2} ${R_ARENA * 2}`);
+    }
+
+    function drawDynamic() {
+        fighters.forEach((m, i) => {
+            const c = $('m' + i), st = $('st' + i), hp = $('hp' + i);
+            if (m.status === 'dead') {
+                c.parentNode.classList.add('dead'); 
+                m.hover = false;
+                st.classList.add('hidden');
+                hp.classList.add('hidden');
+                return;
+            }
+            c.setAttribute('cx', m.x); c.setAttribute('cy', m.y);
+            c.setAttribute('class',
+                `fighter ${m.status === 'wounded' ? 'wounded' : ''} ${m.flying ? 'fly' : ''} ${m.sprinting ? 'sprint' : ''}`);
+
+            if (m.status === 'wounded' && Math.random() < 0.02) {
+                const bloodLayer = $('bloodLayer');
+                if (!bloodLayer) return; // silently fail if something went wrong
+
+                const initialRadius = 3 + rnd(3);
+                const drop = make('circle', {
+                    r: initialRadius,
+                    fill: 'rgba(160, 0, 0, 0.4)',
+                    cx: m.x + rnd(6) - 3,
+                    cy: m.y + rnd(6) - 3,
+                    'fill-opacity': 0.4
                 });
-            });
+                bloodLayer.appendChild(drop);
 
-            /* beast attack */
-            if (beast.cd <= 0) {
-                const near = men.filter(m => m.status === 'alive' && !m.latched && !m.flying && dist(m, beast) <= BEAST_R[beast.type] + MAN_R + 3);
-                if (near.length) {
-                    if (beast.type === 'gorilla') gorillaThrow(near[0]); else tigerSwipe(near);
-                    beast.cd = 12;
+                let bloodStart = performance.now();
+                const duration = 15000;
+
+                function fadeBlood(ts) {
+                    const elapsed = ts - bloodStart;
+                    const progress = Math.min(elapsed / duration, 1);
+                    drop.setAttribute('fill-opacity', (0.4 * (1 - progress)).toFixed(2));
+                    drop.setAttribute('r', (initialRadius * (1 - progress)).toFixed(2));
+                    if (progress < 1) requestAnimationFrame(fadeBlood);
+                    else drop.remove();
                 }
-            } else beast.cd--;
 
-            /* men attack */
-            men.forEach(m => {
-                if (m.status !== 'alive' || m.latched || m.flying || dist(m, beast) > BEAST_R[beast.type] + MAN_R + 3) return;
-                if (Math.random() < HIT_BASE * (m.status === 'wounded' ? WOUND_P : 1)) {beast.hp--; log('Hit', 'hit');}
+                requestAnimationFrame(fadeBlood);
+            }
+            st.setAttribute('x', m.x); st.setAttribute('y', m.y - 12); st.textContent = 'Sta ' + Math.round(m.st);
+            hp.setAttribute('x', m.x); hp.setAttribute('y', m.y + 12); hp.textContent = m.latched ? '🤼' : '';
+            const show = labels || m.hover; 
+            st.classList.toggle('hidden', !show); 
+            hp.classList.toggle('hidden', !show);
+
+            if (selectedEntity?.t === 'm' && selectedEntity.i === i) {
+                c.setAttribute('stroke', 'black');
+                c.setAttribute('stroke-width', '2');
+            } else {
+                c.removeAttribute('stroke');
+                c.removeAttribute('stroke-width');
+            }
+        });
+        
+        $('beastEntity').setAttribute('cx', beastEntity.x); $('beastEntity').setAttribute('cy', beastEntity.y);
+        $('blet').setAttribute('x', beastEntity.x); $('blet').setAttribute('y', beastEntity.y + 4);
+        
+        const showBeast = labels;
+        const beastIsAlive = beastEntity.hp > 0;
+        $('bst').setAttribute('x', beastEntity.x); 
+        $('bst').setAttribute('y', beastEntity.y - BEAST_R[beastEntity.type] - 10); 
+        $('bst').textContent = 'Sta ' + beastEntity.st.toFixed(1);
+        $('bst').classList.toggle('hidden', !showBeast || !beastIsAlive);
+        
+        $('bhp').setAttribute('x', beastEntity.x); 
+        $('bhp').setAttribute('y', beastEntity.y + BEAST_R[beastEntity.type] + 10); 
+        $('bhp').textContent = 'HP ' + beastEntity.hp;
+        $('bhp').classList.toggle('hidden', !showBeast || !beastIsAlive);
+
+        const beastC = $('beastEntity');
+        if (selectedEntity?.t === 'b') {
+            beastC.setAttribute('stroke', 'black');
+            beastC.setAttribute('stroke-width', '2');
+        } else {
+            beastC.removeAttribute('stroke');
+            beastC.removeAttribute('stroke-width');
+        }
+    }
+
+    /* == repulsion helper == */
+    function repel(a, b, r, imp = 0.2, bias = 1) {
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const d = Math.hypot(dx, dy);
+        const over = r - d;
+
+        if (over <= 0 || d === 0) return;
+
+        const nx = dx / d;
+        const ny = dy / d;
+
+        const ma = MASS[a.type || 'fighter'];
+        const mb = MASS[b.type || 'fighter'];
+        const total = ma + mb;
+
+        // Cap how much velocity can be applied (prevents explosions)
+        const maxImpulse = 4;
+
+        const push = Math.min(over * imp, maxImpulse);
+
+        const pa = Math.pow(mb / total, bias);
+        const pb = Math.pow(ma / total, bias);
+
+        // Positional correction (resolve overlap directly)
+        const sep = over / 1.5;
+        a.x -= nx * sep * pa;
+        a.y -= ny * sep * pa;
+        b.x += nx * sep * pb;
+        b.y += ny * sep * pb;
+
+        // Velocity impulse (repulsion)
+        a.vx -= nx * push * pa;
+        a.vy -= ny * push * pa;
+        b.vx += nx * push * pb;
+        b.vy += ny * push * pb;
+    }
+
+    // /* == line-of-sight checker == */
+    // function isBlocked(m) {
+    //     const dx = beastEntity.x - m.x, dy = beastEntity.y - m.y, len = Math.hypot(dx, dy);
+    //     return fighters.some(o => o !== m && !o.flying && !o.latched && o.status === 'alive' && dist(o, m) < len
+    //         && Math.abs((o.x - m.x) * dy - (o.y - m.y) * dx) / len < MAN_R * 2);
+    // }
+
+    /* == physics & AI == */
+    function move() {
+        const strat = stratSel.value;
+        /* fighters loop */
+        fighters.forEach((m, i) => {
+            if (m.status === 'dead') return;
+
+            if (m.status === 'wounded') {
+                m.bleed -= Math.random();
+                if (m.bleed <= 0) {
+                    m.status = 'dead';
+                    return;
+                }
+            }
+
+            /* flying */
+            if (m.flying) {
+                m.vx *= FLY_DECAY; m.vy *= FLY_DECAY;
+                if (Math.hypot(m.vx, m.vy) < MIN_FLY_SPEED) {m.flying = false;}
+                integrate(m); return;
+            }
+
+            /* latched */
+            if (m.latched) {
+                m.x = beastEntity.x + m.offX;
+                m.y = beastEntity.y + m.offY;
+                m.vx = beastEntity.vx; 
+                m.vy = beastEntity.vy; 
+                useStamina(m, ST_MOVE);
+                if (m.st <= 0 && Math.random() < 0.05) {
+                    m.status = 'dead';
+                    m.latched = false;
+                    log(`Exhausted`, 'kill', `Latched fighter died from stamina loss.`);
+                }
+                return;
+            }
+            
+            /* desire vector */
+            const dx = beastEntity.x - m.x, dy = beastEntity.y - m.y, distB = dist(m, beastEntity) || 1;
+            let ax = 0, ay = 0, eff = (m.status === 'wounded' ? 0.2 : 1);
+            
+            const tired = m.st <= TIRED;
+            const closeThreat = distB < 100;
+            const restNeeded = tired && strat !== 'assault' && !closeThreat && m.st < 50;
+
+            if (restNeeded) {
+                m.resting = true;
+                m.sprinting = false;
+                ax = 0;
+                ay = 0;
+                m.vx *= FRICTION;
+                m.vy *= FRICTION;
+                integrate(m);
+                m.st = clamp(m.st + ST_REC, 0, m.maxSt);
+                return;
+            } else {
+                m.resting = false;
+            }
+            // determine if sprinting
+            m.sprinting = false;
+            // strategy-based AI
+            m.sprinting = false;
+            ax = 0;
+            ay = 0;
+            eff = (m.status === 'wounded' ? 0.2 : 1);
+            
+            const acc = ACC[m.type || 'fighter'];
+            switch (strat) {
+                case 'assault': {
+                    // Always push forward
+                    if (!m.sprinting && m.st > SPRINT_START) m.sprinting = true;
+                    if (m.sprinting && m.st < SPRINT_STOP) m.sprinting = false;
+                    ax += dx / distB * acc * eff;
+                    ay += dy / distB * acc * eff;
+                    break;
+                }
+
+                case 'grapple': {
+                    m.sprinting = m.st > TIRED && distB > GRAP_R + 10;
+                    const dxn = dx / distB;
+                    const dyn = dy / distB;
+                    if (distB > GRAP_R) {
+                        ax += dxn * acc * eff;
+                        ay += dyn * acc * eff;
+                    } else {
+                        m.latched = true;
+                        m.offX = dx;
+                        m.offY = dy;
+                        log(`Grapple`, 'hit', `Fighter latched onto the ${beastEntity.type}.`);
+                        return;
+                    }
+                    break;
+                }
+
+                case 'rotate': {
+                    // Sprint if the beast is too close
+                    m.sprinting = distB < BEAST_R[beastEntity.type] + 30 && m.st > TIRED;
+                    const tang = Math.PI / 2;
+                    const px = Math.cos(tang) * dx - Math.sin(tang) * dy;
+                    const py = Math.sin(tang) * dx + Math.cos(tang) * dy;
+                    ax += px / distB * acc * eff;
+                    ay += py / distB * acc * eff;
+                    if (distB < BEAST_R[beastEntity.type] + 15) {
+                        ax -= dx / distB * acc * eff;
+                        ay -= dy / distB * acc * eff;
+                    }
+                    break;
+                }
+
+                case 'tire': {
+                    const close = distB < 90;
+                    const staminaAdv = m.st > beastEntity.st + 5;
+
+                    if (close && m.st > TIRED) {
+                        // Panic sprint away
+                        m.sprinting = true;
+                        ax -= dx / distB * acc * eff;
+                        ay -= dy / distB * acc * eff;
+                    } else if (staminaAdv) {
+                        // Go aggressive (like assault)
+                        if (!m.sprinting && m.st > SPRINT_START) m.sprinting = true;
+                        if (m.sprinting && m.st < SPRINT_STOP) m.sprinting = false;
+                        ax += dx / distB * acc * eff;
+                        ay += dy / distB * acc * eff;
+                    } else {
+                        // Stop and recover
+                        m.sprinting = false;
+                        ax = 0;
+                        ay = 0;
+                    }
+                    break;
+                }
+
+                case 'hitrun': {
+                    if (m.hitClock > 0) {
+                        // Retreating phase
+                        ax -= dx / distB * acc * eff;
+                        ay -= dy / distB * acc * eff;
+                        m.sprinting = true;
+                        m.hitClock--;
+                    } else if (distB > BEAST_R[beastEntity.type] + 30) {
+                        if (m.st < m.maxSt - 10) {
+                            // Stop and rest
+                            m.sprinting = false;
+                            ax = 0;
+                            ay = 0;
+                        } else {
+                            // Start attack
+                            m.sprinting = true;
+                            ax += dx / distB * acc * eff;
+                            ay += dy / distB * acc * eff;
+                        }
+                    } else {
+                        // Hit achieved, switch to retreat
+                        m.hitClock = 30;
+                    }
+                    break;
+                }
+            }
+
+            if (m.sprinting) {
+                useStamina(m, ST_SPRINT);
+                eff *= 1.5;
+            }
+
+            /* LoS sidestep */
+            // if (isBlocked(m)) {const side = Math.random() < .5 ? 1 : -1; ax += -dy / distB * ACC * side * eff; ay += dx / distB * ACC * side * eff;}
+
+            switch (strat) {
+                case 'assault':
+                    if (m.st > TIRED) {
+                        ax += dx / distB * acc * eff;
+                        ay += dy / distB * acc * eff;
+                    } else {
+                        // fallback: orbit slowly
+                        const tang = Math.PI / 2;
+                        const px = Math.cos(tang) * dx - Math.sin(tang) * dy;
+                        const py = Math.sin(tang) * dx + Math.cos(tang) * dy;
+                        ax += px / distB * acc * 0.5;
+                        ay += py / distB * acc * 0.5;
+                    }
+                    break;
+
+                case 'grapple':
+                    if (m.st > TIRED) {
+                        if (distB > GRAP_R) {
+                            ax += dx / distB * acc * eff;
+                            ay += dy / distB * acc * eff;
+                        } else {
+                            m.latched = true;
+                            m.offX = dx;
+                            m.offY = dy;
+                            return;
+                        }
+                    } else {
+                        // fallback: retreat slowly
+                        ax -= dx / distB * acc * 0.5;
+                        ay -= dy / distB * acc * 0.5;
+                    }
+                    break;
+
+                case 'rotate':
+                    if (m.st > TIRED) {
+                        const tang = Math.PI / 2;
+                        const px = Math.cos(tang) * dx - Math.sin(tang) * dy;
+                        const py = Math.sin(tang) * dx + Math.cos(tang) * dy;
+                        ax += px / distB * acc * eff;
+                        ay += py / distB * acc * eff;
+                        if (distB < BEAST_R[beastEntity.type] + 15) {
+                            ax -= dx / distB * acc * eff;
+                            ay -= dy / distB * acc * eff;
+                        }
+                    } else {
+                        // fallback: stop and recover
+                        ax = 0; ay = 0;
+                    }
+                    break;
+
+                case 'tire':
+                    if (m.st > TIRED + 5) {
+                        ax += dx / distB * acc * eff;
+                        ay += dy / distB * acc * eff;
+                    } else if (m.st < TIRED) {
+                        ax -= dx / distB * acc * 0.6;
+                        ay -= dy / distB * acc * 0.6;
+                    }
+                    break;
+
+                case 'hitrun':
+                    if (m.hitClock > 0) {
+                        ax -= dx / distB * acc * eff;
+                        ay -= dy / distB * acc * eff;
+                        m.hitClock--;
+                    } else if (distB > BEAST_R[beastEntity.type] + 25) {
+                        if (m.st > TIRED) {
+                            ax += dx / distB * acc * eff;
+                            ay += dy / distB * acc * eff;
+                        } else {
+                            // fallback: loiter slowly
+                            ax += (Math.random() - 0.5) * 0.5;
+                            ay += (Math.random() - 0.5) * 0.5;
+                        }
+                    } else {
+                        m.hitClock = 25;
+                    }
+                    break;
+            }
+
+            const baseMass = MASS['fighter'];
+            const mass = MASS[m.type || 'fighter'] || baseMass;
+
+            // Scale acceleration based on mass ratio (relative to fighter)
+            const accelScale = baseMass / mass;
+            const friction = 0.85 + 0.05 * (1 - accelScale); // heavier things slide less
+
+            // Apply acceleration and friction
+            m.vx = (m.vx + ax * accelScale) * friction;
+            m.vy = (m.vy + ay * accelScale) * friction;
+            
+            integrate(m);
+            if (m.sprinting) {
+                useStamina(m, ST_SPRINT);
+                eff *= 1.5;
+                useStamina(m, ST_MOVE); // include base movement cost too
+            } else if (ax || ay) {
+                useStamina(m, ST_MOVE);
+                m.st = clamp(m.st + ST_REC * 0.5, 0, m.maxSt);
+            } else {
+                m.st = clamp(m.st + ST_REC, 0, m.maxSt);
+            }
+        });
+
+        /* beastEntity motion */
+        const latched = fighters.filter(m => m.latched).length;
+        useStamina(beastEntity, latched * LATCH_DRAIN);
+        const hpRatio = beastEntity.hp / beastEntity.baseHp;
+        const fatiguePenalty = 1 - hpRatio; // 0 when healthy, approaches 1 when near death
+        const hpMaxReduction = beastEntity.baseSt * fatiguePenalty * 0.4; // up to 40% loss
+        const grappleLoss = 0.002 * latched;
+        const newMax = beastEntity.baseSt - hpMaxReduction - grappleLoss;
+        beastEntity.maxSt = clamp(newMax, 20, beastEntity.baseSt);
+        beastEntity.st += ST_REC;
+        beastEntity.st = clamp(beastEntity.st, 0, beastEntity.maxSt);
+
+        const THREAT_RADIUS = 250;
+        const FALLBACK_RADIUS = 300;
+
+        let target = null;
+        let bx = 0, by = 0;
+        let sprinting = false;
+
+        const aliveNearby = fighters.filter(m =>
+            m.status === 'alive' &&
+            !m.latched
+        );
+
+        const woundedNearby = fighters.filter(m =>
+            m.status === 'wounded' &&
+            !m.latched
+        );
+
+        if (aliveNearby.length > 0) {
+            aliveNearby.sort((a, b) => dist(a, beastEntity) - dist(b, beastEntity));
+            target = aliveNearby[0];
+        } else if (woundedNearby.length > 0) {
+            woundedNearby.sort((a, b) => dist(a, beastEntity) - dist(b, beastEntity));
+            target = woundedNearby[0];
+        }
+
+        // Move toward target or wander
+        if (target) {
+            const dx = target.x - beastEntity.x;
+            const dy = target.y - beastEntity.y;
+            const d = Math.hypot(dx, dy) || 1;
+            // Sprint only if beast has stamina and a target
+            beastEntity.sprinting = beastEntity.st > SPRINT_START && !!target;
+
+            const speed = beastEntity.sprinting
+                ? V_BEAST[beastEntity.type].sprint
+                : V_BEAST[beastEntity.type].walk;
+
+            bx = (dx / d) * speed;
+            by = (dy / d) * speed;
+            if (sprinting) useStamina(beastEntity, ST_SPRINT_B[beastEntity.type]);
+        } else {
+            // wander slowly
+            if (!beastEntity.wanderAngle || Math.random() < 0.02) {
+                beastEntity.wanderAngle = Math.random() * Math.PI * 2;
+            }
+            const speed = V_BEAST[beastEntity.type].walk * 0.5;
+            bx = Math.cos(beastEntity.wanderAngle) * speed;
+            by = Math.sin(beastEntity.wanderAngle) * speed;
+
+            // small stamina regen while wandering
+            beastEntity.st = clamp(beastEntity.st + ST_REC * 0.5, 0, beastEntity.maxSt);
+        }
+
+        const beastAcc = ACC[beastEntity.type] || 0.5;
+
+        beastEntity.vx = (beastEntity.vx + bx * beastAcc) * FRICTION;
+        beastEntity.vy = (beastEntity.vy + by * beastAcc) * FRICTION;
+        integrate(beastEntity);
+        // === TRAMPLE EFFECT ===
+        // Only trample if T-Rex is sprinting *and* chasing a valid alive target
+        const hasValidTarget = fighters.some(m =>
+            m.status === 'alive' &&
+            !m.latched &&
+            dist(m, beastEntity) < 250
+        );
+
+        if (beastEntity.type === 'trex' && beastEntity.sprinting && beastEntity.hp > 0 && hasValidTarget) {
+            const radius = BEAST_R.trex + MAN_R - 1;
+            fighters.forEach(m => {
+                if (
+                    m.status === 'alive' &&
+                    !m.flying &&
+                    !m.latched &&
+                    dist(m, beastEntity) <= radius
+                ) {
+                    // Let grapplers attempt to latch instead of being trampled instantly
+                    const isGrappling = stratSel.value === 'grapple' && dist(m, beastEntity) <= GRAP_R + 2;
+                    if (!isGrappling) {
+                        m.status = 'wounded';
+                        m.bleed = 1000;
+                        log('Trampled!', 'wound', 'A fighter was trampled by the sprinting T-Rex.');
+                    }
+                }
+            });
+        }
+
+
+        /* repulsion */
+        const ground = fighters.filter(m => !m.latched && !m.flying && m.status !== 'dead');
+        for (let i = 0; i < ground.length; i++) {
+            const a = ground[i];
+            for (let j = i + 1; j < ground.length; j++)
+                repel(a, ground[j], MAN_R * 2.5, 0.25); // fighters vs fighters
+                repel(a, beastEntity, MAN_R + BEAST_R[beastEntity.type], 0.2, 3); // fighters vs beast
+        }
+    }
+
+    /* == abilities & combat == */
+    function launchFlying(m, ang) {
+        const power = beastEntity.st / ST_MAX; // 0 to 1
+        m.flying = true; 
+        m.vx = Math.cos(ang) * THROW_V * power;
+        m.vy = Math.sin(ang) * THROW_V * power;
+        m.status = 'wounded';
+        m.bleed = 1000;
+    }
+    function gorillaThrow(v) {
+        log('Throw', 'throw'); 
+        if (v.status === 'wounded') {
+            v.status = 'dead';
+            log('Slam Kill', 'kill', 'A wounded fighter didn’t survive the throw.');
+            return;
+        }
+        launchFlying(v, Math.atan2(v.y - beastEntity.y, v.x - beastEntity.x));}
+    function tigerSwipe(list) {
+        log('Swipe', 'swipe');
+        list.slice(0, SWIPE_MAX).forEach(m => {
+            if (m.status === 'wounded') {
+                m.status = 'dead';
+                log('Swipe Kill', 'kill', 'The tiger finished off a wounded fighter.');
+            } else {
+                if (Math.random() < BASE_KILL.tiger) {
+                    m.status = 'dead';
+                    log('Swipe Kill', 'kill', 'The tiger’s swipe killed a fighter.');
+                } else {
+                    m.status = 'wounded';
+                    m.bleed = 1000;
+                    log('Injured', 'wound', 'The tiger swiped and wounded a fighter.');
+                }
+            }
+        });
+    }
+
+    function combat() {
+        /* flying collisions at high speed */
+        fighters.forEach(f => {
+            if (!f.flying) return;
+            fighters.forEach(o => {
+                if (o === f || o.status === 'dead' || o.flying) return;
+                if (dist(f, o) <= MAN_R * 2 && Math.hypot(f.vx, f.vy) > DAMAGE_SPEED) {
+                    if (Math.hypot(f.vx, f.vy) * FLY_TRANSFER > VMAX.fighter) {o.flying = true;}
+                    o.vx += f.vx * FLY_TRANSFER; o.vy += f.vy * FLY_TRANSFER;
+                    if (Math.hypot(f.vx, f.vy) > DAMAGE_SPEED * 1.2) o.status = 'wounded';
+                    f.vx *= .6; f.vy *= .6;
+                }
+            });
+        });
+
+        /* beastEntity attack */
+        if (beastEntity.cd > 0) {
+            beastEntity.cd--;
+            return;
+        }
+        if (beastEntity.cd <= 0 && beastEntity.st > ST_ATK_B) {
+            const range = BEAST_R[beastEntity.type] + MAN_R + 3;
+
+            const aliveNearby = fighters.filter(m =>
+                m.status === 'alive' && !m.latched && !m.flying && dist(m, beastEntity) <= range);
+
+            const woundedNearby = fighters.filter(m =>
+                m.status === 'wounded' && !m.latched && !m.flying && dist(m, beastEntity) <= range);
+
+            if (aliveNearby.length) {
+                if (beastEntity.type === 'gorilla') gorillaThrow(aliveNearby[0]);
+                if (beastEntity.type === 'tiger') tigerSwipe(aliveNearby);
+            } else if (woundedNearby.length) {
+                if (beastEntity.type === 'gorilla') gorillaThrow(woundedNearby[0]);
+                if (beastEntity.type === 'tiger') tigerSwipe(woundedNearby);
+            }
+
+            if (beastEntity.type === 'trex') {
+                // AOE chomp centered on one fighter
+                const range = BEAST_R.trex + MAN_R + 5;
+                const targets = fighters.filter(m =>
+                    (m.status === 'alive' || m.status === 'wounded') &&
+                    !m.latched &&
+                    !m.flying &&
+                    dist(m, beastEntity) < range
+                );
+
+                if (targets.length > 0) {
+                    // Choose central victim
+                    targets.sort((a, b) => (a.status === 'wounded' ? -1 : 1));
+                    let primary;
+
+                    // Try to find wounded target first
+                    const wounded = targets.filter(m => m.status === 'wounded');
+                    if (wounded.length > 0) {
+                        primary = wounded[Math.floor(Math.random() * wounded.length)];
+                    } else {
+                        primary = targets[Math.floor(Math.random() * targets.length)];
+                    }
+
+                    // Apply chomp to nearby units
+                    const CHOMP_RADIUS = 30;
+                    const victims = fighters.filter(m =>
+                        (m.status === 'alive' || m.status === 'wounded') &&
+                        !m.latched &&
+                        !m.flying &&
+                        dist(m, primary) <= CHOMP_RADIUS
+                    );
+
+                    victims.forEach(m => {
+                        m.status = 'dead';
+                        log('Chomp!', 'kill', 'The T-Rex chomped a cluster of fighters!');
+                    });
+
+                    beastEntity.cd = 50;
+                    useStamina(beastEntity, ST_ATK_B);
+                    return;
+                }
+            }
+
+            if (aliveNearby.length || woundedNearby.length) {
+                beastEntity.cd = 12;
+                useStamina(beastEntity, ST_ATK_B);
+            }
+        }
+
+        /* fighters attack */
+        fighters.forEach(m => {
+            if (m.status !== 'alive' || m.flying) return;
+            if (!m.latched && dist(m, beastEntity) > BEAST_R[beastEntity.type] + MAN_R + 3) return;
+            const fatigueFactor = m.st / ST_MAX;
+            let hitChance = HIT_BASE * (m.status === 'wounded' ? WOUND_P : 1) * fatigueFactor;
+            if (m.latched) hitChance *= 0.2;
+            if (Math.random() < hitChance) {
+                beastEntity.hp--;
+                log('Hit Landed', 'hit', 'A fighter hit the beast!');
+            }
+        });
+
+        if (beastEntity.hp <= 0 && running) {
+            log('Victory!', 'win', 'The beast has been defeated!');
+
+            // Count fighter outcomes
+            let alive = 0, wounded = 0, dead = 0;
+            fighters.forEach(f => {
+                if (f.status === 'dead') dead++;
+                else if (f.status === 'wounded') wounded++;
+                else alive++;
             });
 
-            if (beast.hp <= 0 && running) {log('Beast down', 'win'); stop();}
+            log(`Survivors: ${alive} alive, ${wounded} wounded, ${dead} dead`, 'win');
+            stop();
         }
+    }
 
-        /* == loop & UI == */
-        function tick() {time += DT; timer.textContent = time.toFixed(1) + ' s'; move(); combat(); drawDyn();}
-        function start() {if (!running) {loop = setInterval(tick, STEP); running = true;} }
-        function stop() {clearInterval(loop); running = false;}
+    /* == loop & UI == */
+    let lastTickTime = performance.now();
+    function tick() {
+        const now = performance.now();
+        const elapsed = (now - lastTickTime) / 1000; // convert to seconds
+        lastTickTime = now;
 
-        function hookUI() {
-            document.onkeydown = e => {if (e.code === 'Space') {labels = !labels; drawDyn();} if (e.code === 'Escape') {sel = null;} };
+        time += elapsed;
+        timerDisplay.textContent = time.toFixed(1) + ' s';
+
+        move();
+        combat();
+        drawDynamic();
+        updateStats();
+    }
+
+    function start() {if (!running) {loop = setInterval(tick, STEP); running = true;} }
+    function stop() {clearInterval(loop); running = false;}
+
+    function initKeyboardShortcuts() {
+        document.onkeydown = e => {
+            if (e.code === 'Space') {
+                labels = !labels;
+                drawDynamic();
+            }
+            if (e.code === 'Escape') {
+                selectedEntity = null;
+                updateStats();
+            }
+        };
+    }
+    function initControlPanel() {
             regenB.onclick = regenerate;
-            startB.onclick = _ => {startB.disabled = true; pauseB.disabled = false; resetB.disabled = false; regenB.disabled = true; start();};
-            pauseB.onclick = _ => {running ? stop() : start(); pauseB.textContent = running ? 'Pause' : 'Resume';};
-            resetB.onclick = _ => {stop(); startB.disabled = false; pauseB.disabled = true; resetB.disabled = true; regenB.disabled = false; pauseB.textContent = 'Pause'; regenerate();};
-            [menN, beastSel, spawnSel, stratSel].forEach(el => el.onchange = regenerate);
-            svg.onpointerdown = e => {if (e.target !== svg) return; dragging = true; drag0 = {x: e.clientX - panX, y: e.clientY - panY}; svg.setPointerCapture(e.pointerId); arena.style.cursor = 'grabbing';};
-            svg.onpointermove = e => {if (!dragging) return; panX = e.clientX - drag0.x; panY = e.clientY - drag0.y; setView();};
-            svg.onpointerup = _ => {dragging = false; arena.style.cursor = 'grab';};
+            startB.onclick = () => {
+                startB.disabled = true;
+                pauseB.disabled = false;
+                resetB.disabled = false;
+                regenB.disabled = true;
+                start();
+            };
+            pauseB.onclick = () => {
+                const wasRunning = running;
+                wasRunning ? stop() : start();
+                pauseB.textContent = running ? 'Pause' : 'Resume';
+            };
+            resetB.onclick = () => {
+                stop();
+                startB.disabled = false;
+                pauseB.disabled = true;
+                resetB.disabled = true;
+                regenB.disabled = false;
+                pauseB.textContent = 'Pause';
+                regenerate();
+            };
+            [fightersN, beastSel, spawnSel, stratSel].forEach(el => el.onchange = regenerate);
+        }
+    function initPointerPan() {
+            svg.onpointerdown = e => {
+                if (e.target.closest('.fighter, .beastEntity')) return;
+                pointerDownAt = {x: e.clientX, y: e.clientY};
+                drag0 = {x: e.clientX - panX, y: e.clientY - panY};
+                svg.setPointerCapture(e.pointerId);
+            };
+
+            svg.onpointermove = e => {
+                if (!pointerDownAt) return;
+
+                const dx = e.clientX - pointerDownAt.x;
+                const dy = e.clientY - pointerDownAt.y;
+                const dist = Math.hypot(dx, dy);
+
+                if (!dragging && dist > CLICK_THRESHOLD) {
+                    dragging = true;
+                    arena.style.cursor = 'grabbing';
+                }
+
+                if (dragging) {
+                    panX = e.clientX - drag0.x;
+                    panY = e.clientY - drag0.y;
+                    setView();
+                }
+            };
+
+            svg.onpointerup = e => {
+                if (!dragging && e.target === svg) {
+                    selectedEntity = null;
+                    updateStats?.();
+                }
+                dragging = false;
+                pointerDownAt = null;
+                arena.style.cursor = 'grab';
+            };
+        }
+    function initZoomControl() {
             svg.onwheel = e => {
-                e.preventDefault(); const s = e.deltaY > 0 ? 0.9 : 1.1; zoom = clamp(zoom * s, .3, 3);
-                const p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY; const inv = svg.getScreenCTM().inverse(); const w = p.matrixTransform(inv);
-                panX = (w.x - panX) * (1 - s) + panX; panY = (w.y - panY) * (1 - s) + panY; setView();
-            }, {passive: false};
+                e.preventDefault();
+                const scale = e.deltaY > 0 ? 0.9 : 1.1;
+                zoom = clamp(zoom * scale, 0.3, 3);
+
+                const p = svg.createSVGPoint();
+                p.x = e.clientX;
+                p.y = e.clientY;
+                const inv = svg.getScreenCTM().inverse();
+                const w = p.matrixTransform(inv);
+
+                const newZoom = clamp(zoom * scale, 0.3, 3);
+                if (newZoom !== zoom) {
+                    zoom = newZoom;
+                    panX = (w.x - panX) * (1 - scale) + panX;
+                    panY = (w.y - panY) * (1 - scale) + panY;
+                    setView();
+                }
+            };
+        }
+    function initCursorBehavior() {
+            svg.addEventListener('pointermove', e => {
+                if (e.target.closest('.fighter, .beastEntity')) {
+                    arena.style.cursor = 'pointer';
+                } else if (!dragging) {
+                    arena.style.cursor = 'grab';
+                }
+            });
         }
 
-        /* boot */
-        regenerate();
+    function hookUI() {
+        initKeyboardShortcuts();
+        initControlPanel();
+        initPointerPan();
+        initZoomControl();
+        initCursorBehavior();
+    }
+
+    /* boot */
+    regenerate();
     </script>
 </body>
 
