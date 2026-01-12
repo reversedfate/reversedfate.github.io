@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+        /************************************************************************
+     * RESET & BASIC STYLES
+     ************************************************************************/
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: sans-serif;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            background-color: #222;
+            color: #fff;
+            overflow: hidden;
+        }
+
+        /************************************************************************
+     * MAIN LAYOUT
+     ************************************************************************/
+        #main-area {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /************************************************************************
+     * SIDE MENU & TOGGLE
+     ************************************************************************/
+        #side-menu-toggle {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 30px;
+            height: 25px;
+            cursor: pointer;
+            z-index: 3000;
+        }
+
+        #side-menu-toggle div {
+            background: #fff;
+            height: 3px;
+            margin: 5px 0;
+            transition: 0.4s;
+        }
+
+        #todo-bubble {
+            position: absolute;
+            top: 18px;
+            left: 52px;
+            min-width: 20px;
+            height: 20px;
+            background: #f00;
+            color: #fff;
+            border-radius: 10px;
+            font-size: 0.75rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 0 5px;
+            z-index: 3001;
+            pointer-events: none;
+            visibility: hidden;
+        }
+
+        #side-menu {
+            position: absolute;
+            top: 0;
+            left: -270px;
+            width: 270px;
+            height: 100%;
+            background-color: #111;
+            padding: 20px;
+            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.5);
+            transition: 0.4s;
+            overflow-y: auto;
+            z-index: 2000;
+        }
+
+        #side-menu.open {
+            left: 0;
+        }
+
+        #side-menu::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        #side-menu::-webkit-scrollbar-track {
+            background: #222;
+        }
+
+        #side-menu::-webkit-scrollbar-thumb {
+            background: #555;
+        }
+
+        #side-menu h3 {
+            margin-bottom: 10px;
+            border-bottom: 1px solid #444;
+            padding-bottom: 6px;
+            font-size: 1rem;
+            color: #fff;
+        }
+
+        #side-menu button,
+        #side-menu input[type="number"],
+        #side-menu input[type="text"],
+        #side-menu textarea,
+        #side-menu select {
+            margin-bottom: 14px;
+            width: 100%;
+            padding: 8px;
+            background: #222;
+            border: 1px solid #444;
+            color: #fff;
+            font-size: 0.9rem;
+            outline: none;
+            border-radius: 3px;
+        }
+
+        #side-menu label {
+            font-size: 0.85rem;
+            margin-bottom: 5px;
+            display: block;
+            color: #ccc;
+        }
+
+        .tool-container {
+            margin-bottom: 20px;
+        }
+
+        ul {
+            padding-left: 0;
+            margin-top: 6px;
+        }
+
+        li {
+            list-style: none;
+        }
+
+        #todo-list li {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+            font-size: 0.85rem;
+            background: rgba(255, 255, 255, 0.07);
+            padding: 5px 8px;
+            border-radius: 4px;
+        }
+
+        #todo-list li button {
+            width: 24px;
+            height: 24px;
+            background: #444;
+            color: #fff;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 0;
+        }
+
+        /************************************************************************
+     * CLOCK + DIGITAL READOUT
+     ************************************************************************/
+        #clock-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 350px;
+            height: 350px;
+            border: 5px solid #fff;
+            border-radius: 50%;
+            transition: all 0.5s ease;
+            overflow: visible;
+            z-index: 1;
+        }
+
+        @media (max-width: 480px) {
+            #clock-container {
+                width: 250px;
+                height: 250px;
+            }
+        }
+
+        #clock-face {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            overflow: visible;
+        }
+
+        /* The container for minute & hour marks */
+        .tick {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform-origin: center bottom;
+        }
+
+        .minute-mark {
+            width: 2px;
+            height: 12px;
+            border-radius: 2px;
+            background: #fff;
+            opacity: 0.8;
+        }
+
+        .hour-mark {
+            width: 4px;
+            height: 24px;
+            border-radius: 2px;
+            background: #fff;
+        }
+
+        .hand {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform-origin: 50% 100%;
+        }
+
+        .hour {
+            width: 4px;
+            height: 25%;
+            background: #fff;
+            border-radius: 2px;
+        }
+
+        .minute {
+            width: 3px;
+            height: 35%;
+            background: #fff;
+            border-radius: 2px;
+        }
+
+        .second {
+            width: 2px;
+            height: 40%;
+            background: #f33;
+            border-radius: 2px;
+        }
+
+        #digital-clock {
+            position: absolute;
+            top: calc(100% + 8px);
+            width: 100%;
+            text-align: center;
+            color: #fff;
+            font-size: 1.1rem;
+            opacity: 0.9;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        #pomodoro-sector {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            pointer-events: none;
+            mask-image: radial-gradient(circle, transparent 50%, black 51%);
+        }
+
+        #pomodoro-display {
+            position: absolute;
+            bottom: -40px;
+            text-align: center;
+            width: 100%;
+            color: #ff7777;
+            font-size: 0.85rem;
+            pointer-events: none;
+            opacity: 0.85;
+        }
+    </style>
+</head>
+
+<body>
+    <audio id="beep-sound" src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAABCxAgAEABAAZGF0YYQAAAAA"
+        preload="auto"></audio>
+
+    <!-- Toggle -->
+    <div id="side-menu-toggle">
+        <div></div>
+        <div></div>
+        <div></div>
+    </div>
+    <div id="todo-bubble"></div>
+    <div id="side-menu">
+        <!-- Tools go here -->
+
+        <div class="tool-container">
+            <h3>Pomodoro Timer</h3>
+            <label for="pomodoro-length">Length (minutes):</label>
+            <input type="number" id="pomodoro-length" min="1" max="240" value="25" />
+            <button id="pomodoro-start">Start Pomodoro</button>
+            <button id="pomodoro-reset">Reset Pomodoro</button>
+        </div>
+
+        <div class="tool-container">
+            <h3>Stopwatch</h3>
+            <button id="stopwatch-start">Start</button>
+            <button id="stopwatch-stop">Stop</button>
+            <button id="stopwatch-reset">Reset</button>
+            <div id="stopwatch-display" style="margin-top:5px; opacity:0.7;">00:00.0</div>
+        </div>
+
+        <div class="tool-container">
+            <h3>Countdown</h3>
+            <label for="countdown-minutes">Minutes:</label>
+            <input type="number" id="countdown-minutes" value="5" min="1" />
+            <button id="countdown-start">Start</button>
+            <button id="countdown-reset">Reset</button>
+            <div id="countdown-display" style="margin-top:5px; opacity:0.7;">00:00</div>
+        </div>
+
+        <div class="tool-container">
+            <h3>Micro Break Reminder</h3>
+            <label for="micro-break-interval">Interval (min):</label>
+            <input type="number" id="micro-break-interval" min="1" max="180" value="20" />
+            <button id="micro-break-start">Start</button>
+            <button id="micro-break-stop">Stop</button>
+            <div id="micro-break-display" style="margin-top:5px; opacity:0.7;"></div>
+        </div>
+
+        <div class="tool-container">
+            <h3>Breathing Exercise</h3>
+            <button id="breathing-start">Start 1-min Exercise</button>
+            <div id="breathing-display" style="margin-top:10px; opacity:0.7;"></div>
+        </div>
+
+        <div class="tool-container">
+            <h3>Random Focus Quote</h3>
+            <button id="quote-btn">Get Quote</button>
+            <div id="quote-display" style="margin-top:5px; font-size:0.85rem; opacity:0.7;"></div>
+        </div>
+
+        <div class="tool-container">
+            <h3>To-Do List</h3>
+            <input type="text" id="todo-input" placeholder="New Task" />
+            <button id="todo-add">Add</button>
+            <ul id="todo-list"></ul>
+        </div>
+
+        <div class="tool-container">
+            <h3>Daily Goals</h3>
+            <textarea id="daily-goals" rows="3" placeholder="Write your daily goals here..."></textarea>
+        </div>
+
+        <div class="tool-container">
+            <h3>Distraction Log</h3>
+            <input type="text" id="distraction-input" placeholder="What distracted you?" />
+            <button id="distraction-add-btn">Log</button>
+            <ul id="distraction-list"></ul>
+        </div>
+
+        <div class="tool-container">
+            <h3>Quick Link Saver</h3>
+            <input type="text" id="link-name" placeholder="Link Name" />
+            <input type="text" id="link-url" placeholder="URL" />
+            <button id="link-add-btn">Add Link</button>
+            <ul id="link-list"></ul>
+        </div>
+
+        <div class="tool-container">
+            <h3>Scratchpad</h3>
+            <textarea id="notes-scratch" rows="4" placeholder="Jot down quick notes..."></textarea>
+        </div>
+
+        <div class="tool-container">
+            <h3>Focus Music</h3>
+            <button id="music-toggle">Play/Pause</button>
+            <div style="margin-top:5px; font-size:0.85rem; opacity:0.7;">
+                (Add your own music URL in code)
+            </div>
+        </div>
+
+        <div class="tool-container">
+            <h3>White Noise</h3>
+            <button id="white-noise-toggle">Play/Pause</button>
+            <div style="margin-top:5px; font-size:0.85rem; opacity:0.7;">
+                (Placeholder for white noise)
+            </div>
+        </div>
+
+        <div class="tool-container">
+            <h3>Journal Prompt</h3>
+            <button id="journal-prompt-btn">Get Prompt</button>
+            <div id="journal-prompt-display" style="margin-top:5px; font-size:0.85rem; opacity:0.7;"></div>
+        </div>
+
+        <div class="tool-container">
+            <h3>Color Theme</h3>
+            <button id="random-color-btn">Randomize Theme</button>
+        </div>
+
+        <div class="tool-container">
+            <h3>Gratitude Affirmation</h3>
+            <button id="gratitude-btn">Show Affirmation</button>
+            <div id="gratitude-display" style="margin-top:5px; font-size:0.85rem; opacity:0.7;"></div>
+        </div>
+
+        <div class="tool-container">
+            <h3>Positive Vibe Meter</h3>
+            <button id="vibe-btn">Check Vibe</button>
+            <div id="vibe-display" style="margin-top:5px; font-size:0.85rem; opacity:0.7;"></div>
+        </div>
+
+        <div class="tool-container">
+            <h3>Kindness Challenge</h3>
+            <button id="kindness-btn">Get Challenge</button>
+            <div id="kindness-display" style="margin-top:5px; font-size:0.85rem; opacity:0.7;"></div>
+        </div>
+
+        <div class="tool-container">
+            <h3>Inspiration Gallery</h3>
+            <button id="inspire-btn">Inspire Me</button>
+            <div id="inspire-display" style="margin-top:5px; font-size:0.85rem; opacity:0.7;"></div>
+        </div>
+
+        <div class="tool-container">
+            <h3>Victory Log</h3>
+            <button id="victory-btn">Log A Win</button>
+            <ul id="victory-list"></ul>
+        </div>
+    </div>
+
+    <!-- Main area containing analog + digital clock -->
+    <div id="main-area">
+        <div id="clock-container">
+            <div id="clock-face">
+                <!-- The ring for Pomodoro -->
+                <div id="pomodoro-sector"></div>
+                <!-- Clock hands -->
+                <div class="hand hour" id="hour-hand"></div>
+                <div class="hand minute" id="minute-hand"></div>
+                <div class="hand second" id="second-hand"></div>
+            </div>
+            <!-- Pomodoro display beneath the clock face -->
+            <div id="pomodoro-display"></div>
+            <!-- Digital clock beneath everything -->
+            <div id="digital-clock"></div>
+        </div>
+    </div>
+
+    <script>
+        /************************************************************************
+         * Local Storage Helper
+         ************************************************************************/
+        let appState = {};
+        const APP_STATE_KEY = "productivity_background_app_state";
+
+        function loadAppState() {
+            try {
+                const saved = localStorage.getItem(APP_STATE_KEY);
+                if (saved) {
+                    appState = JSON.parse(saved);
+                } else {
+                    appState = {};
+                }
+            } catch (e) {
+                appState = {};
+            }
+        }
+        function saveAppState() {
+            localStorage.setItem(APP_STATE_KEY, JSON.stringify(appState));
+        }
+        loadAppState();
+
+        /************************************************************************
+         * MENU TOGGLE
+         ************************************************************************/
+        const menuToggle = document.getElementById('side-menu-toggle');
+        const sideMenu = document.getElementById('side-menu');
+        menuToggle.addEventListener('click', () => {
+            sideMenu.classList.toggle('open');
+            updateTodoBubble(appState.todoItems?.length || 0);
+        });
+
+        /************************************************************************
+         * TODO BUBBLE
+         ************************************************************************/
+        const todoBubble = document.getElementById('todo-bubble');
+        function updateTodoBubble(count) {
+            if (!sideMenu.classList.contains('open') && count > 0) {
+                todoBubble.style.visibility = 'visible';
+                todoBubble.textContent = count;
+            } else {
+                todoBubble.style.visibility = 'hidden';
+            }
+        }
+
+        /************************************************************************
+         * CREATE TICK MARKS for outer circle
+         ************************************************************************/
+        const clockFace = document.getElementById('clock-face');
+
+        // We'll create 60 minute marks around the outer rim
+        // The clock is 350x350, radius ~ 175. We'll place them near the outer edge:
+        const radius = 175; // ~10px in from the border
+
+        for (let i = 0; i < 60; i++) {
+            // hour marks only at multiples of 15 if we only want 3,6,9,12
+            // otherwise 12 hour marks are multiples of 5
+            const angleDeg = i * 6;
+            const mark = document.createElement('div');
+            // if it's a multiple of 15 => 3,6,9,12
+            let yOffset = 0;
+            let xOffset = 0;
+            if (i % 5 === 0) {
+                mark.classList.add('tick', 'hour-mark');
+                yOffset = 24;
+                xOffset = 2;
+            } else {
+                mark.classList.add('tick', 'minute-mark');
+                yOffset = 12;
+                xOffset = 1;
+            }
+            // position them radially
+            // convert degrees to radians for sin/cos
+            const angleRad = (Math.PI / 180) * (angleDeg + 180);
+            const x = (radius - xOffset - 1)* Math.sin(angleRad) - xOffset;
+            const y = -(radius) * Math.cos(angleRad) - yOffset; // negative because top is -y
+            mark.style.transform = `translate(${x}px, ${y}px) rotate(${angleDeg}deg)`;
+            clockFace.appendChild(mark);
+        }
+
+        /************************************************************************
+         * ANALOG CLOCK + DIGITAL CLOCK
+         ************************************************************************/
+        const hourHand = document.getElementById('hour-hand');
+        const minuteHand = document.getElementById('minute-hand');
+        const secondHand = document.getElementById('second-hand');
+        const digitalClock = document.getElementById('digital-clock');
+
+        function updateClock() {
+            const now = new Date();
+            const seconds = now.getSeconds();
+            const minutes = now.getMinutes();
+            const hours = now.getHours();
+
+            const secondDeg = (seconds / 60) * 360;
+            const minuteDeg = (minutes / 60) * 360 + (seconds / 60) * 6;
+            const hourDeg = (hours % 12) / 12 * 360 + (minutes / 60) * 30;
+
+            secondHand.style.transform = `translate(-50%, -100%) rotate(${secondDeg}deg)`;
+            minuteHand.style.transform = `translate(-50%, -100%) rotate(${minuteDeg}deg)`;
+            hourHand.style.transform = `translate(-50%, -100%) rotate(${hourDeg}deg)`;
+
+            const hh = String(hours).padStart(2, '0');
+            const mm = String(minutes).padStart(2, '0');
+            const ss = String(seconds).padStart(2, '0');
+            digitalClock.textContent = `${hh}:${mm}:${ss}`;
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        /************************************************************************
+         * COLOR THEME RANDOMIZER
+         ************************************************************************/
+        const randomColorBtn = document.getElementById('random-color-btn');
+        function applyColorTheme() {
+            if (appState.baseColor) {
+                document.body.style.backgroundColor = appState.baseColor;
+            }
+            if (appState.accentColor && hourHand && minuteHand) {
+                hourHand.style.backgroundColor = appState.accentColor;
+                minuteHand.style.backgroundColor = appState.accentColor;
+            }
+            if (appState.secondColor && secondHand) {
+                secondHand.style.backgroundColor = appState.secondColor;
+            }
+        }
+        randomColorBtn.addEventListener('click', () => {
+            const hue = Math.floor(Math.random() * 360);
+            const sat = Math.floor(40 + Math.random() * 60);
+            const light = Math.floor(30 + Math.random() * 40);
+            const baseColor = `hsl(${hue}, ${sat}%, ${light}%)`;
+            const accentColor = `hsl(${(hue + 180) % 360}, ${sat}%, ${light}%)`;
+            const secondColor = `hsl(${(hue + 90) % 360}, 80%, 50%)`;
+
+            appState.baseColor = baseColor;
+            appState.accentColor = accentColor;
+            appState.secondColor = secondColor;
+            applyColorTheme();
+            saveAppState();
+        });
+
+        /************************************************************************
+         * POMODORO TIMER
+         ************************************************************************/
+        let pomodoroInterval = null;
+        let pomodoroTimeLeft = 0;
+        let pomodoroTotalTime = 0;
+        let pomodoroStartAngle = 0;
+        let pomodoroArcDegrees = 0;
+        const pomodoroLengthInput = document.getElementById('pomodoro-length');
+        const pomodoroStartBtn = document.getElementById('pomodoro-start');
+        const pomodoroResetBtn = document.getElementById('pomodoro-reset');
+        const pomodoroSector = document.getElementById('pomodoro-sector');
+        const pomodoroDisplay = document.getElementById('pomodoro-display');
+
+        if (appState.pomodoroLength) {
+            pomodoroLengthInput.value = appState.pomodoroLength;
+        }
+
+        function getCurrentMinuteHandAngle() {
+            const now = new Date();
+            const m = now.getMinutes();
+            const s = now.getSeconds();
+            return (m + s / 60) * 6;
+        }
+        function updatePomodoroSector() {
+            if (pomodoroTimeLeft <= 0 || pomodoroTotalTime <= 0) {
+                pomodoroSector.style.background = 'none';
+                pomodoroDisplay.textContent = '';
+                return;
+            }
+            const fraction = pomodoroTimeLeft / pomodoroTotalTime;
+            const arcForDisplay = Math.min(pomodoroArcDegrees, 360);
+            const currentArc = arcForDisplay * fraction;
+
+            // no -90 offset
+            pomodoroSector.style.transform = `rotate(${pomodoroStartAngle}deg)`;
+            pomodoroSector.style.background = `conic-gradient(
+        rgba(255,0,0,0.2) 0deg,
+        rgba(255,0,0,0.2) ${currentArc}deg,
+        transparent 0deg
+      )`;
+
+            const mins = Math.floor(pomodoroTimeLeft / 60);
+            const secs = pomodoroTimeLeft % 60;
+            pomodoroDisplay.textContent = `Pomodoro: ${mins}:${secs < 10 ? '0' + secs : secs}`;
+        }
+        function runPomodoro() {
+            if (pomodoroTimeLeft <= 0) {
+                clearInterval(pomodoroInterval);
+                pomodoroInterval = null;
+                document.getElementById('beep-sound').play().catch(() => { });
+                updatePomodoroSector();
+                return;
+            }
+            pomodoroTimeLeft--;
+            updatePomodoroSector();
+        }
+        pomodoroStartBtn.addEventListener('click', () => {
+            if (pomodoroInterval) return;
+            let totalMins = parseInt(pomodoroLengthInput.value) || 25;
+            let totalSecs = totalMins * 60;
+            appState.pomodoroLength = pomodoroLengthInput.value;
+            saveAppState();
+
+            if (pomodoroTimeLeft <= 0) {
+                pomodoroTimeLeft = totalSecs;
+                pomodoroTotalTime = totalSecs;
+                pomodoroStartAngle = getCurrentMinuteHandAngle();
+                pomodoroArcDegrees = totalMins * 6;
+            }
+
+            pomodoroInterval = setInterval(runPomodoro, 1000);
+            updatePomodoroSector();
+        });
+        pomodoroResetBtn.addEventListener('click', () => {
+            clearInterval(pomodoroInterval);
+            pomodoroInterval = null;
+            pomodoroTimeLeft = 0;
+            updatePomodoroSector();
+        });
+
+        /************************************************************************
+         * STOPWATCH
+         ************************************************************************/
+        let stopwatchInterval = null;
+        let stopwatchTime = appState.stopwatchTime || 0;
+        const stopwatchDisplay = document.getElementById('stopwatch-display');
+        const stopwatchStart = document.getElementById('stopwatch-start');
+        const stopwatchStop = document.getElementById('stopwatch-stop');
+        const stopwatchReset = document.getElementById('stopwatch-reset');
+
+        function updateStopwatchDisplay() {
+            const totalSeconds = Math.floor(stopwatchTime / 10);
+            const fraction = stopwatchTime % 10;
+            const mins = Math.floor(totalSeconds / 60);
+            const secs = totalSeconds % 60;
+            stopwatchDisplay.textContent =
+                `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${fraction}`;
+        }
+        updateStopwatchDisplay();
+        function runStopwatch() {
+            stopwatchTime++;
+            appState.stopwatchTime = stopwatchTime;
+            saveAppState();
+            updateStopwatchDisplay();
+        }
+        stopwatchStart.addEventListener('click', () => {
+            if (!stopwatchInterval) {
+                stopwatchInterval = setInterval(runStopwatch, 100);
+            }
+        });
+        stopwatchStop.addEventListener('click', () => {
+            clearInterval(stopwatchInterval);
+            stopwatchInterval = null;
+        });
+        stopwatchReset.addEventListener('click', () => {
+            clearInterval(stopwatchInterval);
+            stopwatchInterval = null;
+            stopwatchTime = 0;
+            appState.stopwatchTime = 0;
+            saveAppState();
+            updateStopwatchDisplay();
+        });
+
+        /************************************************************************
+         * COUNTDOWN
+         ************************************************************************/
+        let countdownInterval = null;
+        let countdownTimeLeft = (typeof appState.countdownTimeLeft === "number")
+            ? appState.countdownTimeLeft : 0;
+        const countdownInput = document.getElementById('countdown-minutes');
+        const countdownStartBtn = document.getElementById('countdown-start');
+        const countdownResetBtn = document.getElementById('countdown-reset');
+        const countdownDisplay = document.getElementById('countdown-display');
+
+        if (appState.countdownMinutes) {
+            countdownInput.value = appState.countdownMinutes;
+        }
+        function updateCountdownDisplay() {
+            if (countdownTimeLeft <= 0) {
+                countdownDisplay.textContent = "00:00";
+                return;
+            }
+            const mins = Math.floor(countdownTimeLeft / 60);
+            const secs = countdownTimeLeft % 60;
+            countdownDisplay.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        }
+        updateCountdownDisplay();
+        function runCountdown() {
+            if (countdownTimeLeft <= 0) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+                document.getElementById('beep-sound').play().catch(() => { });
+                return;
+            }
+            countdownTimeLeft--;
+            appState.countdownTimeLeft = countdownTimeLeft;
+            saveAppState();
+            updateCountdownDisplay();
+        }
+        countdownStartBtn.addEventListener('click', () => {
+            if (countdownInterval) return;
+            const totalSecs = parseInt(countdownInput.value) * 60;
+            appState.countdownMinutes = countdownInput.value;
+            saveAppState();
+
+            if (!countdownTimeLeft || countdownTimeLeft <= 0) {
+                countdownTimeLeft = totalSecs;
+                appState.countdownTimeLeft = countdownTimeLeft;
+                saveAppState();
+            }
+            countdownInterval = setInterval(runCountdown, 1000);
+        });
+        countdownResetBtn.addEventListener('click', () => {
+            clearInterval(countdownInterval);
+            countdownInterval = null;
+            countdownTimeLeft = 0;
+            appState.countdownTimeLeft = 0;
+            saveAppState();
+            updateCountdownDisplay();
+        });
+
+        /************************************************************************
+         * TODO LIST
+         ************************************************************************/
+        const todoInput = document.getElementById('todo-input');
+        const todoAddBtn = document.getElementById('todo-add');
+        const todoList = document.getElementById('todo-list');
+        if (!appState.todoItems) {
+            appState.todoItems = [];
+        }
+        function renderTodoList() {
+            todoList.innerHTML = '';
+            appState.todoItems.forEach((task, index) => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+          <span>${task}</span>
+          <button data-index="${index}">X</button>
+        `;
+                todoList.appendChild(li);
+                li.querySelector('button').addEventListener('click', (e) => {
+                    const idx = parseInt(e.target.getAttribute('data-index'));
+                    appState.todoItems.splice(idx, 1);
+                    saveAppState();
+                    renderTodoList();
+                    updateTodoBubble(appState.todoItems.length);
+                });
+            });
+            updateTodoBubble(appState.todoItems.length);
+        }
+        todoAddBtn.addEventListener('click', () => {
+            const task = todoInput.value.trim();
+            if (task !== '') {
+                appState.todoItems.push(task);
+                todoInput.value = '';
+                saveAppState();
+                renderTodoList();
+            }
+        });
+        renderTodoList();
+
+        /************************************************************************
+         * DAILY GOALS
+         ************************************************************************/
+        const dailyGoals = document.getElementById('daily-goals');
+        if (!appState.dailyGoals) {
+            appState.dailyGoals = '';
+        }
+        dailyGoals.value = appState.dailyGoals;
+        dailyGoals.addEventListener('input', () => {
+            appState.dailyGoals = dailyGoals.value;
+            saveAppState();
+        });
+
+        /************************************************************************
+         * BREATHING EXERCISE
+         ************************************************************************/
+        const breathingStart = document.getElementById('breathing-start');
+        const breathingDisplay = document.getElementById('breathing-display');
+        let breathingTimer = null;
+        let breatheCount = 0;
+        function runBreathing() {
+            if (breatheCount >= 60) {
+                clearInterval(breathingTimer);
+                breathingTimer = null;
+                breathingDisplay.textContent = "Done.";
+                document.getElementById('beep-sound').play().catch(() => { });
+                return;
+            }
+            const cyclePos = breatheCount % 12;
+            if (cyclePos < 4) {
+                breathingDisplay.textContent = "Breathe In...";
+            } else if (cyclePos < 6) {
+                breathingDisplay.textContent = "Hold...";
+            } else if (cyclePos < 10) {
+                breathingDisplay.textContent = "Breathe Out...";
+            } else {
+                breathingDisplay.textContent = "Hold...";
+            }
+            breatheCount++;
+        }
+        breathingStart.addEventListener('click', () => {
+            if (breathingTimer) return;
+            breatheCount = 0;
+            breathingDisplay.textContent = "Breathe In...";
+            breathingTimer = setInterval(runBreathing, 1000);
+        });
+
+        /************************************************************************
+         * RANDOM FOCUS QUOTE
+         ************************************************************************/
+        const quoteBtn = document.getElementById('quote-btn');
+        const quoteDisplay = document.getElementById('quote-display');
+        const quotes = [
+            "Focus on being productive instead of busy. – Tim Ferriss",
+            "Your future is created by what you do today, not tomorrow.",
+            "It always seems impossible until it’s done. – Nelson Mandela",
+            "Well done is better than well said. – Benjamin Franklin",
+            "The key is not to prioritize what's on your schedule, but to schedule your priorities. – Stephen Covey",
+            "Only put off until tomorrow what you are willing to die having left undone. – Pablo Picasso",
+            "Starve your distractions; feed your focus.",
+            "The way to get started is to quit talking and begin doing. – Walt Disney",
+            "Time is a created thing. To say 'I don't have time' is to say 'I don't want to.' – Lao Tzu",
+            "Either you run the day, or the day runs you. – Jim Rohn",
+            "Action is the foundational key to all success. – Pablo Picasso",
+            "Don't watch the clock; do what it does. Keep going. – Sam Levenson",
+            "Nothing will work unless you do. – Maya Angelou",
+            "Focus is more valuable than IQ. – Robin Sharma",
+            "Productivity is being able to do things that you were never able to do before. – Franz Kafka"
+        ];
+        quoteBtn.addEventListener('click', () => {
+            const randIdx = Math.floor(Math.random() * quotes.length);
+            quoteDisplay.textContent = quotes[randIdx];
+        });
+
+        /************************************************************************
+         * FOCUS MUSIC
+         ************************************************************************/
+        const musicToggle = document.getElementById('music-toggle');
+        let musicPlaying = false;
+        musicToggle.addEventListener('click', () => {
+            musicPlaying = !musicPlaying;
+            if (musicPlaying) {
+                alert("Playing focus music (placeholder).");
+            } else {
+                alert("Music paused (placeholder).");
+            }
+        });
+
+        /************************************************************************
+         * SCRATCHPAD
+         ************************************************************************/
+        const notesScratch = document.getElementById('notes-scratch');
+        if (!appState.scratchNotes) {
+            appState.scratchNotes = '';
+        }
+        notesScratch.value = appState.scratchNotes;
+        notesScratch.addEventListener('input', () => {
+            appState.scratchNotes = notesScratch.value;
+            saveAppState();
+        });
+
+        /************************************************************************
+         * DISTRACTION LOG
+         ************************************************************************/
+        const distractionInput = document.getElementById('distraction-input');
+        const distractionAddBtn = document.getElementById('distraction-add-btn');
+        const distractionList = document.getElementById('distraction-list');
+        if (!appState.distractions) {
+            appState.distractions = [];
+        }
+        function renderDistractionList() {
+            distractionList.innerHTML = '';
+            appState.distractions.forEach((dist, idx) => {
+                const li = document.createElement('li');
+                li.style.marginBottom = '5px';
+                li.innerHTML = `
+          <span>${dist}</span>
+          <button data-index="${idx}" style="float:right; background:#444; width:24px; height:24px; padding:0; border-radius:3px;">X</button>
+        `;
+                distractionList.appendChild(li);
+                li.querySelector('button').addEventListener('click', (e) => {
+                    const i = parseInt(e.target.getAttribute('data-index'));
+                    appState.distractions.splice(i, 1);
+                    saveAppState();
+                    renderDistractionList();
+                });
+            });
+        }
+        distractionAddBtn.addEventListener('click', () => {
+            const text = distractionInput.value.trim();
+            if (text) {
+                appState.distractions.push(text);
+                distractionInput.value = '';
+                saveAppState();
+                renderDistractionList();
+            }
+        });
+        renderDistractionList();
+
+        /************************************************************************
+         * QUICK LINK SAVER
+         ************************************************************************/
+        const linkName = document.getElementById('link-name');
+        const linkUrl = document.getElementById('link-url');
+        const linkAddBtn = document.getElementById('link-add-btn');
+        const linkList = document.getElementById('link-list');
+        if (!appState.linkItems) {
+            appState.linkItems = [];
+        }
+        function renderLinkList() {
+            linkList.innerHTML = '';
+            appState.linkItems.forEach((item, index) => {
+                const li = document.createElement('li');
+                li.style.marginBottom = '6px';
+                li.innerHTML = `
+          <a href="${item.url}" target="_blank" style="color:#bbb; text-decoration: underline;">${item.name}</a>
+          <button data-index="${index}" style="float:right; background:#444; width:24px; height:24px; padding:0; border-radius:3px;">X</button>
+        `;
+                linkList.appendChild(li);
+                li.querySelector('button').addEventListener('click', (e) => {
+                    const idx = parseInt(e.target.getAttribute('data-index'));
+                    appState.linkItems.splice(idx, 1);
+                    saveAppState();
+                    renderLinkList();
+                });
+            });
+        }
+        linkAddBtn.addEventListener('click', () => {
+            const nm = linkName.value.trim();
+            const url = linkUrl.value.trim();
+            if (nm && url) {
+                appState.linkItems.push({name: nm, url: url});
+                linkName.value = '';
+                linkUrl.value = '';
+                saveAppState();
+                renderLinkList();
+            }
+        });
+        renderLinkList();
+
+        /************************************************************************
+         * WHITE NOISE
+         ************************************************************************/
+        const whiteNoiseToggle = document.getElementById('white-noise-toggle');
+        let whiteNoisePlaying = false;
+        whiteNoiseToggle.addEventListener('click', () => {
+            whiteNoisePlaying = !whiteNoisePlaying;
+            if (whiteNoisePlaying) {
+                alert("White noise playing (placeholder).");
+            } else {
+                alert("White noise paused (placeholder).");
+            }
+        });
+
+        /************************************************************************
+         * MICRO BREAK REMINDER
+         ************************************************************************/
+        const microBreakIntervalInput = document.getElementById('micro-break-interval');
+        const microBreakStartBtn = document.getElementById('micro-break-start');
+        const microBreakStopBtn = document.getElementById('micro-break-stop');
+        const microBreakDisplay = document.getElementById('micro-break-display');
+        let microBreakTimer = null;
+        let microBreakCountdown = 0;
+        if (appState.microBreakInterval) {
+            microBreakIntervalInput.value = appState.microBreakInterval;
+        }
+        function runMicroBreakCountdown() {
+            if (microBreakCountdown <= 0) {
+                document.getElementById('beep-sound').play().catch(() => { });
+                microBreakCountdown = parseInt(microBreakIntervalInput.value) * 60;
+            } else {
+                microBreakCountdown--;
+            }
+            let m = Math.floor(microBreakCountdown / 60);
+            let s = microBreakCountdown % 60;
+            microBreakDisplay.textContent = `Next break in: ${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        }
+        microBreakStartBtn.addEventListener('click', () => {
+            const val = parseInt(microBreakIntervalInput.value);
+            if (!val || val < 1) return;
+            appState.microBreakInterval = val;
+            saveAppState();
+            if (microBreakTimer) return;
+            microBreakCountdown = val * 60;
+            microBreakTimer = setInterval(runMicroBreakCountdown, 1000);
+        });
+        microBreakStopBtn.addEventListener('click', () => {
+            clearInterval(microBreakTimer);
+            microBreakTimer = null;
+            microBreakDisplay.textContent = '';
+        });
+
+        /************************************************************************
+         * JOURNAL PROMPT
+         ************************************************************************/
+        const journalPromptBtn = document.getElementById('journal-prompt-btn');
+        const journalPromptDisplay = document.getElementById('journal-prompt-display');
+        const prompts = [
+            "What made you smile today?",
+            "What is one lesson you learned recently?",
+            "Describe a recent challenge and how you overcame it.",
+            "What are three things you're grateful for today?",
+            "What is your main focus or intention right now?",
+            "How do you feel about your progress this week?",
+            "What are you looking forward to tomorrow?",
+            "Reflect on a moment of kindness you've seen or experienced.",
+            "When do you feel most energized during the day?",
+            "What's a small step you can take toward a current goal?"
+        ];
+        journalPromptBtn.addEventListener('click', () => {
+            const idx = Math.floor(Math.random() * prompts.length);
+            journalPromptDisplay.textContent = prompts[idx];
+        });
+
+        /************************************************************************
+         * 5 NEW POSITIVE TOOLS
+         ************************************************************************/
+        const gratitudeBtn = document.getElementById('gratitude-btn');
+        const gratitudeDisplay = document.getElementById('gratitude-display');
+        const affirmations = [
+            "I am grateful for the opportunities today brings.",
+            "Every moment is a chance to appreciate life.",
+            "I am thankful for the growth I'm experiencing.",
+            "My life is filled with abundance and joy.",
+            "I am blessed to learn from each challenge."
+        ];
+        gratitudeBtn.addEventListener('click', () => {
+            const idx = Math.floor(Math.random() * affirmations.length);
+            gratitudeDisplay.textContent = affirmations[idx];
+        });
+
+        const vibeBtn = document.getElementById('vibe-btn');
+        const vibeDisplay = document.getElementById('vibe-display');
+        vibeBtn.addEventListener('click', () => {
+            const vibeLevels = ["Radiant", "Uplifted", "Cheerful", "Optimistic", "Glowing"];
+            const idx = Math.floor(Math.random() * vibeLevels.length);
+            vibeDisplay.textContent = `Your vibe is: ${vibeLevels[idx]}`;
+        });
+
+        const kindnessBtn = document.getElementById('kindness-btn');
+        const kindnessDisplay = document.getElementById('kindness-display');
+        const kindnessChallenges = [
+            "Compliment someone sincerely today.",
+            "Pick up litter in your neighborhood.",
+            "Donate items you no longer need.",
+            "Leave a thank-you note for someone who helped you.",
+            "Pay for someone's coffee or meal anonymously."
+        ];
+        kindnessBtn.addEventListener('click', () => {
+            const idx = Math.floor(Math.random() * kindnessChallenges.length);
+            kindnessDisplay.textContent = kindnessChallenges[idx];
+        });
+
+        const inspireBtn = document.getElementById('inspire-btn');
+        const inspireDisplay = document.getElementById('inspire-display');
+        inspireBtn.addEventListener('click', () => {
+            inspireDisplay.textContent = "Imagine a beautiful scene, or check your own gallery for inspiration!";
+        });
+
+        const victoryBtn = document.getElementById('victory-btn');
+        const victoryList = document.getElementById('victory-list');
+        if (!appState.victories) {
+            appState.victories = [];
+        }
+        function renderVictoryList() {
+            victoryList.innerHTML = '';
+            appState.victories.forEach((item, index) => {
+                const li = document.createElement('li');
+                li.style.marginBottom = '6px';
+                li.innerHTML = `
+          <span>${item}</span>
+          <button data-index="${index}" style="float:right; background:#444; width:24px; height:24px; padding:0; border-radius:3px;">X</button>
+        `;
+                victoryList.appendChild(li);
+                li.querySelector('button').addEventListener('click', (e) => {
+                    const idx = parseInt(e.target.getAttribute('data-index'));
+                    appState.victories.splice(idx, 1);
+                    saveAppState();
+                    renderVictoryList();
+                });
+            });
+        }
+        victoryBtn.addEventListener('click', () => {
+            const userWin = prompt("Log a small win or victory:");
+            if (userWin && userWin.trim() !== "") {
+                appState.victories.push(userWin.trim());
+                saveAppState();
+                renderVictoryList();
+            }
+        });
+        renderVictoryList();
+
+        /************************************************************************
+         * On page load, apply any saved color theme
+         ************************************************************************/
+        applyColorTheme();
+    </script>
+</body>
+
+</html>

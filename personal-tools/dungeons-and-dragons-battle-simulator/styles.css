@@ -1,0 +1,707 @@
+:root {
+    --drawer-width: 300px;
+}
+
+html,
+body {
+    margin: 0;
+    height: 100%;
+    font-family: sans-serif;
+    display: flex;
+    flex-direction: column;
+    background: #f5f5f5;
+    padding: 0;
+    overflow: hidden;
+}
+
+svg {
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+}
+
+#outer {
+    display: grid;
+    grid-template-columns: 1fr 3fr 1fr;
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+        "controls controls controls"
+        "stats arena log";
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+}
+
+#controlsPanel {
+    grid-area: controls;
+    background: #333;
+    color: #fff;
+    padding: 10px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+#controls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+#controls label {
+    display: flex;
+    flex-direction: column;
+    color: white;
+    font-size: 14px;
+}
+
+#controls input,
+#controls select {
+    font-size: 14px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    border: none;
+    margin-top: 4px;
+}
+
+#controls button:hover {
+    background: #444;
+    color: white;
+}
+
+#arenaWrap {
+    grid-area: arena;
+    display: flex;
+    flex-direction: column;
+    background: #fafafa;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden;
+}
+
+#arena {
+    flex: 1;
+    position: relative;
+    width: 100%;
+    height: 100%;
+    border-left: 2px solid #999;
+}
+
+#arena svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+#statsPanelWrap {
+    grid-area: stats;
+    overflow-y: auto;
+    border-right: 2px solid #999;
+    background: #f9f9f9;
+}
+
+#help {
+    font-size: 13px;
+    background: #eef;
+    border-bottom: 2px solid #999;
+    padding: 4px;
+}
+
+#help summary {
+    cursor: pointer;
+    font-weight: 700;
+}
+
+#help ul {
+    margin: 4px 0 0 18px;
+    padding: 0;
+}
+
+#statsPanel {
+    font-size: 13px;
+    padding: 8px;
+}
+
+#logPanelWrap {
+    grid-area: log;
+    overflow-y: auto;
+    border-left: 2px solid #999;
+    background: #f4f4f4;
+    font-size: 13px;
+    padding: 6px;
+}
+
+.creature {
+    fill: #666;
+}
+
+.creature.wounded {
+    fill: #e9a23b;
+}
+
+.creature.dead {
+    fill: #c8c8c8;
+    opacity: 0.5;
+}
+
+.creature-group {
+    cursor: pointer;
+}
+
+.range-indicator {
+    fill-opacity: 0.2;
+    stroke-width: 1;
+    pointer-events: none;
+}
+
+.movement-range {
+    fill: rgba(0, 200, 0, 0.15);
+    stroke: rgba(0, 200, 0, 0.4);
+}
+
+.attack-range {
+    fill: rgba(200, 0, 0, 0.15);
+    stroke: rgba(200, 0, 0, 0.4);
+}
+
+.grid-highlight {
+    fill: rgba(255, 255, 0, 0.3);
+    stroke: rgba(255, 255, 0, 0.6);
+    stroke-width: 1;
+    pointer-events: none;
+}
+
+.path-segment {
+    stroke: rgba(0, 0, 200, 0.6);
+    stroke-width: 2;
+    fill: none;
+    stroke-dasharray: 5, 5;
+    pointer-events: none;
+    animation: dash 1s linear infinite;
+}
+
+@keyframes dash {
+    to {
+        stroke-dashoffset: -10;
+    }
+}
+
+.label {
+    font-size: 9px;
+    text-anchor: middle;
+    dominant-baseline: middle;
+    pointer-events: none;
+    fill: #000;
+}
+
+.hidden {
+    display: none;
+}
+
+.logLine {
+    margin: 2px 0;
+}
+
+details {
+    border-bottom: 1px solid #ccc;
+    background: #f2f2f2;
+    margin: 0;
+}
+
+details[open] {
+    background: #e9e9e9;
+}
+
+details>summary {
+    padding: 10px;
+    font-size: 16px;
+    background: #ddd;
+    cursor: pointer;
+    font-weight: bold;
+    user-select: none;
+}
+
+details>summary::marker {
+    font-size: 20px;
+    color: #555;
+}
+
+#fabControls {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 1000;
+    transition: right 0.3s ease, top 0.3s ease;
+}
+
+.drawer-open #fabControls {
+    right: calc(var(--drawer-width) + 32px);
+}
+
+@media (max-width: 400px) {
+    #fabControls {
+        right: 4px;
+    }
+}
+
+#fabControls button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 16px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: none;
+    background: #222;
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+#fabControls .icon {
+    font-size: 18px;
+}
+
+#fabControls .label {
+    display: inline;
+}
+
+#btnLogs {
+    position: relative;
+}
+
+#logBadge {
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    background: red;
+    color: white;
+    font-size: 12px;
+    padding: 2px 6px;
+    border-radius: 12px;
+    display: none;
+    pointer-events: none;
+}
+
+/* === Default (desktop & large screens) === */
+#settingsDrawer,
+#inspectDrawer,
+#logDrawer,
+#importDrawer,
+#combatDrawer {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: var(--drawer-width);
+    background: #333;
+    color: white;
+    border-left: 2px solid #888;
+    box-shadow: -2px 0 8px rgba(0, 0, 0, 0.4);
+    padding: 10px;
+    overflow-y: auto;
+    z-index: 999;
+    transform: translateX(100%);
+    transition: transform 0.3s ease;
+    background: #333;
+    /* dark gray like top bar */
+    padding: 16px 12px;
+    scrollbar-width: thin;
+    scrollbar-color: #aaa #222;
+}
+
+#settingsDrawer.open,
+#inspectDrawer.open,
+#importDrawer.open,
+#combatDrawer.open,
+#logDrawer.open {
+    transform: translateX(0);
+}
+
+/* For WebKit browsers */
+#settingsDrawer::-webkit-scrollbar,
+#inspectDrawer::-webkit-scrollbar,
+#importDrawer::-webkit-scrollbar,
+#combatDrawer::-webkit-scrollbar,
+#logDrawer::-webkit-scrollbar {
+    width: 6px;
+}
+
+#settingsDrawer::-webkit-scrollbar-thumb,
+#inspectDrawer::-webkit-scrollbar-thumb,
+#importDrawer::-webkit-scrollbar-thumb,
+#combatDrawer::-webkit-scrollbar-thumb,
+#logDrawer::-webkit-scrollbar-thumb {
+    background-color: #aaa;
+}
+
+#settingsDrawer::-webkit-scrollbar-track,
+#inspectDrawer::-webkit-scrollbar-track,
+#importDrawer::-webkit-scrollbar-track,
+#combatDrawer::-webkit-scrollbar-track,
+#logDrawer::-webkit-scrollbar-track {
+    background-color: #222;
+}
+
+#timerDisplay {
+    position: fixed;
+    bottom: 10px;
+    left: 10px;
+    font-weight: bold;
+    background: rgba(0, 0, 0, 0.6);
+    color: white;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 16px;
+    z-index: 1001;
+}
+
+/* Creature Selection */
+#creatureSearch {
+    width: 100%;
+    padding: 8px;
+    margin-bottom: 10px;
+    border-radius: 4px;
+    border: 1px solid #555;
+    background: #444;
+    color: #fff;
+}
+
+#creatureList {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #555;
+    background: #222;
+    margin-bottom: 10px;
+}
+
+#creatureList div {
+    padding: 8px;
+    cursor: pointer;
+    border-bottom: 1px solid #444;
+}
+
+#creatureList div:hover {
+    background: #444;
+}
+
+#creatureList div.selected {
+    background: #555;
+}
+
+/* Team selector */
+#teamSelector {
+    margin-top: 16px;
+}
+
+.team-option {
+    margin-bottom: 8px;
+}
+
+input[type="radio"] {
+    margin-right: 8px;
+}
+
+@media (max-width: 480px) {
+    #fabControls {
+        flex-direction: row;
+        top: 0;
+        left: 0;
+        right: 0;
+        justify-content: space-around;
+        background: #222;
+        padding: 4px 0;
+        z-index: 1001;
+    }
+
+    #fabControls .label {
+        display: none;
+    }
+
+    #fabControls button {
+        flex-direction: column;
+        font-size: 14px;
+        padding: 6px 8px;
+    }
+
+    #settingsDrawer,
+    #logDrawer,
+    #importDrawer,
+    #combatDrawer,
+    #inspectDrawer {
+        left: 0;
+        right: auto;
+        width: 100vw;
+        max-width: 100vw;
+        top: 48px;
+        height: calc(100vh - 48px);
+        max-height: calc(100vh - 48px);
+        border-left: none;
+        border-top: 2px solid #888;
+        transform: translateX(100%);
+        transition: transform 0.3s ease;
+    }
+
+    #settingsDrawer.open,
+    #inspectDrawer.open,
+    #importDrawer.open,
+    #combatDrawer.open,
+    #logDrawer.open {
+        transform: translateX(0);
+    }
+
+    .drawer-open #fabControls {
+        right: 0 !important;
+    }
+}
+
+/* Grid cell */
+.grid-cell {
+    fill: none;
+    stroke: #ccc;
+    stroke-width: 0.5;
+}
+
+/* Tooltips */
+.dice-tooltip {
+    position: relative;
+    display: inline-block;
+    cursor: help;
+    font-weight: bold;
+    border-bottom: 1px dotted #fff;
+}
+
+.dice-tooltip .tooltip-text {
+    visibility: hidden;
+    width: 200px;
+    background-color: #555;
+    color: #fff;
+    text-align: center;
+    border-radius: 6px;
+    padding: 5px;
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    transform: translateX(-50%);
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.dice-tooltip:hover .tooltip-text {
+    visibility: visible;
+    opacity: 1;
+}
+
+/* Combat Controls */
+.combat-button {
+    background: #444;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 12px;
+    margin: 5px 0;
+    width: 100%;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.combat-button:hover {
+    background: #555;
+}
+
+.combat-button:disabled {
+    background: #333;
+    color: #777;
+    cursor: not-allowed;
+}
+
+.initiative-row {
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid #444;
+    padding: 5px 0;
+}
+
+.initiative-row.active {
+    background: #555;
+}
+
+.initiative-value {
+    width: 40px;
+    text-align: center;
+    font-weight: bold;
+}
+
+.initiative-name {
+    flex: 1;
+    padding-left: 10px;
+}
+
+.ai-controlled {
+    padding-left: 5px;
+    color: #00CFFF;
+}
+
+.creature-status {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    margin-right: 10px;
+}
+
+.creature-status.alive {
+    background: green;
+}
+
+.creature-status.wounded {
+    background: orange;
+}
+
+.creature-status.dead {
+    background: red;
+}
+
+/* Current character action info */
+#action-info {
+    background: #444;
+    border-radius: 4px;
+    padding: 10px;
+    margin: 10px 0;
+}
+
+.action-button {
+    background: #555;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 10px;
+    margin: 5px 3px;
+    cursor: pointer;
+}
+
+.action-button:disabled {
+    background: #333;
+    color: #777;
+    cursor: not-allowed;
+}
+
+/* AI Settings */
+#ai-settings {
+    background: #444;
+    padding: 12px;
+    margin: 10px 0;
+    border-radius: 4px;
+}
+
+.checkbox-container {
+    margin: 10px 0;
+}
+
+/* Modal */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 2000;
+}
+
+.modal-content {
+    background-color: #333;
+    padding: 20px;
+    border-radius: 8px;
+    max-width: 500px;
+    width: 80%;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.modal h3 {
+    margin-top: 0;
+    border-bottom: 1px solid #555;
+    padding-bottom: 10px;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 20px;
+}
+
+.modal-actions button {
+    margin-left: 10px;
+}
+
+#targetList {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.target-item {
+    padding: 10px;
+    border-bottom: 1px solid #444;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+}
+
+.target-item:hover {
+    background-color: #444;
+}
+
+.target-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    margin-right: 10px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 18px;
+}
+
+/* Animation classes */
+@keyframes moveTo {
+    from {
+        transform: translate(0, 0);
+    }
+    to {
+        transform: translate(var(--end-x), var(--end-y));
+    }
+}
+
+.moving {
+    animation: moveTo 0.5s ease-in-out forwards;
+}
+
+@keyframes attackSlash {
+    0% {
+        transform: scale(1);
+        opacity: 0;
+    }
+    50% {
+        transform: scale(1.5);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 0;
+    }
+}
+
+.attack-effect {
+    animation: attackSlash 0.4s ease-out forwards;
+    pointer-events: none;
+}

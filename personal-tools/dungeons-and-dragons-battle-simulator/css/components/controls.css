@@ -1,0 +1,264 @@
+/* Controls styles for D&D Battle Simulator */
+@import '../variables.css';
+
+#controls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+#controls label {
+    display: flex;
+    flex-direction: column;
+    color: white;
+    font-size: var(--font-sm);
+}
+
+#controls input,
+#controls select {
+    font-size: var(--font-sm);
+    padding: 6px 8px;
+    border-radius: var(--border-radius-sm);
+    border: none;
+    margin-top: 4px;
+}
+
+#controls button:hover {
+    background: #444;
+    color: white;
+}
+
+.combat-button {
+    background: #444;
+    color: white;
+    border: none;
+    border-radius: var(--border-radius-sm);
+    padding: 8px 12px;
+    margin: 5px 0;
+    width: 100%;
+    cursor: pointer;
+    font-size: var(--font-sm);
+}
+
+.combat-button:hover {
+    background: #555;
+}
+
+.combat-button:disabled {
+    background: #333;
+    color: #777;
+    cursor: not-allowed;
+}
+
+.action-button {
+    background: #555;
+    color: white;
+    border: none;
+    border-radius: var(--border-radius-sm);
+    padding: 6px 10px;
+    margin: 5px 3px;
+    cursor: pointer;
+}
+
+.action-button:disabled {
+    background: #333;
+    color: #777;
+    cursor: not-allowed;
+}
+
+/* Floating action buttons */
+#fabControls {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 1000;
+    transition: right 0.3s ease, top 0.3s ease;
+}
+
+.drawer-open #fabControls {
+    right: calc(var(--drawer-width) + 32px);
+}
+
+@media (max-width: 400px) {
+    #fabControls {
+        right: 4px;
+    }
+}
+
+#fabControls button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--font-md);
+    padding: 8px 10px;
+    border-radius: var(--border-radius-md);
+    border: none;
+    background: #222;
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+#fabControls .icon {
+    font-size: var(--font-lg);
+}
+
+#fabControls .label {
+    display: inline;
+    font-size: var(--font-md);
+    fill: inherit;
+    text-anchor: inherit;
+}
+
+#btnLogs {
+    position: relative;
+}
+
+#logBadge {
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    background: red;
+    color: white;
+    font-size: var(--font-xs);
+    padding: 2px 6px;
+    border-radius: 12px;
+    display: none;
+    pointer-events: none;
+}
+
+/* Team selector */
+#teamSelector {
+    margin-top: var(--spacing-lg);
+}
+
+.team-option {
+    margin-bottom: var(--spacing-sm);
+}
+
+input[type="radio"] {
+    margin-right: var(--spacing-sm);
+}
+
+/* AI Settings */
+#ai-settings {
+    background: #444;
+    padding: 12px;
+    margin: 10px 0;
+    border-radius: var(--border-radius-sm);
+}
+
+.checkbox-container {
+    margin: 10px 0;
+}
+
+/* Action Status Display */
+.action-status-grid {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 4px 8px;
+    margin: 12px 0;
+    font-size: 14px;
+}
+
+.action-type {
+    font-weight: bold;
+}
+
+.status-available {
+    color: #4cd964;
+    margin-right: 5px;
+}
+
+.status-used {
+    color: #ff3b30;
+    margin-right: 5px;
+}
+
+/* Movement meter */
+.movement-status {
+    display: flex;
+    align-items: center;
+    margin: 10px 0;
+    gap: 10px;
+}
+
+.status-label {
+    font-weight: bold;
+    flex: 0 0 80px;
+}
+
+.movement-meter {
+    background: #333;
+    border-radius: 4px;
+    height: 15px;
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+}
+
+.movement-fill {
+    background: linear-gradient(to right, #4cd964, #5ac8fa);
+    height: 100%;
+    transition: width 0.3s ease;
+}
+
+.movement-text {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    color: white;
+    text-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
+}
+
+/* Action Sections */
+.action-section {
+    margin-bottom: 16px;
+}
+
+.action-section h4 {
+    font-size: 16px;
+    margin: 0 0 8px 0;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #555;
+}
+
+.action-btn, .bonus-action-btn {
+    margin: 4px;
+    width: calc(50% - 8px);
+    display: inline-block;
+}
+
+.no-actions-message {
+    font-style: italic;
+    color: #888;
+    font-size: 14px;
+    text-align: center;
+    margin: 10px 0;
+}
+
+/* Creature Stats in Combat */
+.creature-combat-header {
+    font-size: 18px;
+    margin-bottom: 10px;
+}
+
+.creature-stats {
+    display: flex;
+    gap: 15px;
+    background: #444;
+    padding: 8px;
+    border-radius: 4px;
+    justify-content: space-between;
+}

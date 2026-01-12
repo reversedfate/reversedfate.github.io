@@ -1,0 +1,33 @@
+/* Variables for D&D Battle Simulator */
+:root {
+    --drawer-width: 300px;
+    
+    /* Colors */
+    --background-color: #f5f5f5;
+    --dark-background: #333;
+    --light-background: #fafafa;
+    --border-color: #999;
+    --text-color: #fff;
+    
+    /* Team colors */
+    --team1-color: #3498db; /* Blue */
+    --team2-color: #e74c3c; /* Red */
+    --team3-color: #2ecc71; /* Green */
+    --team4-color: #f39c12; /* Orange */
+    
+    /* Spacing */
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 12px;
+    --spacing-lg: 16px;
+    
+    /* Font sizes */
+    --font-xs: 12px;
+    --font-sm: 14px;
+    --font-md: 16px;
+    --font-lg: 18px;
+    
+    /* Border radius */
+    --border-radius-sm: 4px;
+    --border-radius-md: 8px;
+}

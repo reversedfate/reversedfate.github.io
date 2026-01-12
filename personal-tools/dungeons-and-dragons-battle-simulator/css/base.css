@@ -1,0 +1,69 @@
+/* Base styles for D&D Battle Simulator */
+@import 'variables.css';
+
+html,
+body {
+    margin: 0;
+    height: 100%;
+    font-family: sans-serif;
+    display: flex;
+    flex-direction: column;
+    background: var(--background-color);
+    padding: 0;
+    overflow: hidden;
+}
+
+svg {
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+}
+
+#arenaWrap {
+    display: flex;
+    flex-direction: column;
+    background: var(--light-background);
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden;
+}
+
+#arena {
+    flex: 1;
+    position: relative;
+    width: 100%;
+    height: 100%;
+    border-left: 2px solid var(--border-color);
+}
+
+#arena svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.hidden {
+    display: none;
+}
+
+/* For WebKit browsers */
+*::-webkit-scrollbar {
+    width: 6px;
+}
+
+*::-webkit-scrollbar-thumb {
+    background-color: #aaa;
+}
+
+*::-webkit-scrollbar-track {
+    background-color: #222;
+}
+
+/* Firefox scrollbar */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: #aaa #222;
+}

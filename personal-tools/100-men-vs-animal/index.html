@@ -466,30 +466,30 @@
     const FPS = 25, DT = 1 / FPS, STEP = 1000 / FPS, R_ARENA = 350;
     const MAN_R = 6, 
     BEAST_R = {gorilla: 14, tiger: 16, trex: 35};
-    const MASS = {fighter: 90, gorilla: 250, tiger: 310, trex: 8000};
+    const MASS = {fighter: 90, gorilla: 250, tiger: 310, trex: 12000};
     const ACC = {
             fighter: 0.9,
             gorilla: 0.6,
             tiger: 0.75,
             trex: 0.2
         };
-    const FRICTION = 0.85, VMAX = {fighter: 5, gorilla: 4, tiger: 6, trex: 6};
+    const FRICTION = 0.85, VMAX = {fighter: 5, gorilla: 4, tiger: 6, trex: 4.5};
     const V_BEAST = {
             gorilla: {walk: 1.2, sprint: 2.0},
             tiger: {walk: 1.8, sprint: 3.5},
-            trex: {walk: 1.0, sprint: 3.5}
+            trex: {walk: 1.0, sprint: 2.2}
         };
     const ST_SPRINT_B = {gorilla: 0.8, tiger: 1.2, trex: 2.5}; // stamina drain per tick when sprinting
-    const ST_MAX = 100, ST_MOVE = .12, ST_REC = .3, ST_SPRINT = 1.0, ST_ATK_M = 5, ST_ATK_B = 4;
+    const ST_MAX = 100, ST_MOVE = .12, ST_REC = .3, ST_SPRINT = 0.6, ST_ATK_M = 5, ST_ATK_B = 4;
     const MAX_LOSS = .0002, MAX_DROP = .2;
-    const BASE_KILL = {tiger: .9, gorilla: .6, trex: 1}, BASE_WOUND = {tiger: .6, gorilla: .5, trex: 0.1};
-    const HIT_BASE = .15, FLANK = .15, GRAP = .05, WOUND_P = .2, HIT_CAP = .65;
-    const GRAP_R = 18, PIN = {gorilla: 10, tiger: 8}, LATCH_DRAIN = .6;
-    const TIRED = 20, RECOVER = 35, SPRINT_ON = {gorilla: .9, tiger: .8}, SPRINT_OFF = {gorilla: .6, tiger: .5};
+    const BASE_KILL = {tiger: .8, gorilla: .6, trex: 0.95}, BASE_WOUND = {tiger: .6, gorilla: .5, trex: .1};
+    const HIT_BASE = .15, FLANK = .15, GRAP = .05, WOUND_P = .2;
+    const GRAP_R = 18, PIN = {gorilla: 10, tiger: 8, trex: 30}, LATCH_DRAIN = .1;
+    const TIRED = 20, RECOVER = 35, SPRINT_ON = {gorilla: .9, tiger: .8, trex: .9}, SPRINT_OFF = {gorilla: .6, tiger: .5, trex: .1};
     const SPRINT_START = 50;  // Must reach this to start sprinting again
     const SPRINT_STOP = 10;   // Drops below this to stop sprinting
     const SWIPE_MAX = 3, SWIPE_ARC = Math.PI / 2, SWIPE_COST = .2;
-    const THROW_V = 12, FLY_DECAY = .92, MIN_FLY_SPEED = .4, FLY_TRANSFER = .2, DAMAGE_SPEED = 4;
+    const THROW_V = 12, FLY_DECAY = .95, MIN_FLY_SPEED = .4, FLY_TRANSFER = .5, DAMAGE_SPEED = 4;
     const REP_PUSH_MM = 1.0, REP_PUSH_MB = 1.5, REP_K_MM = .4, REP_K_MB = .8;
 
     /* speeds */
@@ -528,8 +528,8 @@
     }
 
     function createBeast(type) {
-        const baseHp = type === ENTITY_TYPE.TIGER ? 40 :
-            type === ENTITY_TYPE.TREX ? 150 :
+        const baseHp = type === ENTITY_TYPE.TIGER ? 50 :
+            type === ENTITY_TYPE.TREX ? 200 :
                 60;
 
         return {
@@ -667,7 +667,7 @@
             const vel = Math.hypot(beastEntity.vx, beastEntity.vy).toFixed(2);
             const pos = `(${beastEntity.x.toFixed(1)}, ${beastEntity.y.toFixed(1)})`;
 
-            const max = type === ENTITY_TYPE.TIGER ? 40 : type === ENTITY_TYPE.TREX ? 150 : 60;
+            const max = beastEntity.baseHp;
             const percent = Math.round(100 * hp / max);
 
             DOM.statsPanel.innerHTML = `
@@ -1288,6 +1288,12 @@
     }
 
     /* == abilities & combat == */
+    function applyKnockback(origin, target, force = 3) {
+            const angle = Math.atan2(target.y - origin.y, target.x - origin.x);
+            target.vx += Math.cos(angle) * force;
+            target.vy += Math.sin(angle) * force;
+        }
+
     function launchFlying(m, ang) {
         const power = beastEntity.st / ST_MAX; // 0 to 1
         m.flying = true; 
@@ -1297,15 +1303,24 @@
         m.bleed = 1000;
     }
     function gorillaThrow(v) {
-        log('Throw', 'throw'); 
+        applyKnockback(beastEntity, v, 4);
         if (v.status === 'wounded') {
             v.status = 'dead';
             log('Slam Kill', 'kill', 'A wounded fighter didn’t survive the throw.');
             return;
+        } else if (v.status === 'alive') {
+            if (Math.random() < 0.4) {
+                v.status = 'dead';
+                log('Bite', 'kill', "The gorilla snaps a fighters neck!");
+            } else {
+                log('Throw', 'throw', "The gorilla throws fighter in the air!");
+                launchFlying(v, Math.atan2(v.y - beastEntity.y, v.x - beastEntity.x));
+            }
         }
-        launchFlying(v, Math.atan2(v.y - beastEntity.y, v.x - beastEntity.x));}
+    }
     function tigerSwipe(list) {
         log('Swipe', 'swipe');
+
         list.slice(0, SWIPE_MAX).forEach(m => {
             if (m.status === 'wounded') {
                 m.status = 'dead';
@@ -1320,25 +1335,55 @@
                     log('Injured', 'wound', 'The tiger swiped and wounded a fighter.');
                 }
             }
+
+            applyKnockback(beastEntity, m, 4);
         });
     }
 
     function handleFlyingCollisions() {
         fighters.forEach(f => {
             if (!f.flying) return;
+
+            const speed = Math.hypot(f.vx, f.vy);
+
             fighters.forEach(o => {
                 if (o === f || o.status === 'dead' || o.flying) return;
-                if (dist(f, o) <= MAN_R * 2 && Math.hypot(f.vx, f.vy) > DAMAGE_SPEED) {
-                    if (Math.hypot(f.vx, f.vy) * FLY_TRANSFER > VMAX.fighter) {
+
+                const d = dist(f, o);
+                if (d <= MAN_R * 2 && speed > DAMAGE_SPEED) {
+                    // Apply velocity transfer
+                    if (speed * FLY_TRANSFER > VMAX.fighter) {
                         o.flying = true;
                     }
+
                     o.vx += f.vx * FLY_TRANSFER;
                     o.vy += f.vy * FLY_TRANSFER;
-                    if (Math.hypot(f.vx, f.vy) > DAMAGE_SPEED * 1.2) {
+
+                    // Apply impact damage
+                    if (speed > DAMAGE_SPEED * 1.8) {
+                        o.status = 'dead';
+                        log('Crushed!', 'kill', 'A fighter was killed by a flying body!');
+                    } else if (speed > DAMAGE_SPEED * 1.2) {
                         o.status = 'wounded';
+                        o.bleed = 1000;
+                        log('Slammed', 'wound', 'A fighter was wounded by a flying body.');
                     }
-                    f.vx *= .6;
-                    f.vy *= .6;
+
+                    // Reduce momentum of the projectile
+                    f.vx *= 0.6;
+                    f.vy *= 0.6;
+
+                    // Optional: splash knockback to nearby fighters
+                    fighters.forEach(other => {
+                        if (other !== f && other !== o && other.status !== 'dead') {
+                            const d2 = dist(o, other);
+                            if (d2 < 40) {
+                                const angle = Math.atan2(other.y - o.y, other.x - o.x);
+                                other.vx += Math.cos(angle) * 1.5;
+                                other.vy += Math.sin(angle) * 1.5;
+                            }
+                        }
+                    });
                 }
             });
         });
@@ -1414,6 +1459,7 @@
         victims.forEach(m => {
             m.status = 'dead';
             log('Chomp!', 'kill', 'The T-Rex chomped a cluster of fighters!');
+            applyKnockback(beastEntity, m, 6);
         });
 
         beastEntity.cd = 50;
@@ -1440,9 +1486,10 @@
                 beastEntity.hp--;
                 log('Hit Landed', 'hit', 'A fighter hit the beast!');
             } else {
-                log("Hit Missed", 'miss', 'A fighter missed the beast!')
+                // log("Hit Missed", 'miss', 'A fighter missed the beast!')
             }
-
+            
+            useStamina(m, ST_ATK_M);
             m.attackCooldown = 30;
         });
     }

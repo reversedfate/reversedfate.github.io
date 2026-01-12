@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Hanayama Valve Puzzle - No WebGL2 VAO Error</title>
+    <style>
+        body {
+            margin: 0;
+            background: #222;
+            overflow: hidden;
+            font-family: sans-serif;
+            color: #ccc;
+        }
+
+        #gui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 9999;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 10px;
+            border-radius: 8px;
+        }
+
+        button {
+            margin: 5px;
+            padding: 6px 10px;
+            background: #444;
+            color: #fff;
+            border: 1px solid #666;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #666;
+        }
+
+        #message {
+            margin-top: 5px;
+            color: red;
+            font-weight: bold;
+            min-height: 1em;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="gui">
+        <button id="prevBtn">Previous</button>
+        <button id="nextBtn">Next</button>
+        <div id="message"></div>
+    </div>
+
+    <script>
+        "use strict";
+
+        /*
+          ===============================================================================
+           A CUSTOM "TINY THREE.JS" CLONE, USING EITHER WEBGL2 VAOs OR OES_vertex_array_object
+           OR A MANUAL (NO VAO) FALLBACK
+          ===============================================================================
+        */
+
+        (function (global) {
+
+            //--------------------------------------------------
+            // 1) Minimal Math Classes: Vector3, Euler, Matrix4
+            //--------------------------------------------------
+
+            function Vector3(x = 0, y = 0, z = 0) {this.x = x; this.y = y; this.z = z;}
+            Vector3.prototype = {
+                set: function (x, y, z) {this.x = x; this.y = y; this.z = z; return this;},
+                copy: function (v) {this.x = v.x; this.y = v.y; this.z = v.z; return this;},
+                clone: function () {return new Vector3(this.x, this.y, this.z);}
+            };
+
+            function Euler(x = 0, y = 0, z = 0, order = "XYZ") {
+                this.x = x; this.y = y; this.z = z; this.order = order;
+            }
+
+            function Matrix4() {
+                this.elements = new Float32Array([
+                    1, 0, 0, 0,
+                    0, 1, 0, 0,
+                    0, 0, 1, 0,
+                    0, 0, 0, 1
+                ]);
+            }
+            Matrix4.prototype = {
+                identity: function () {
+                    const e = this.elements;
+                    e[0] = 1; e[1] = 0; e[2] = 0; e[3] = 0;
+                    e[4] = 0; e[5] = 1; e[6] = 0; e[7] = 0;
+                    e[8] = 0; e[9] = 0; e[10] = 1; e[11] = 0;
+                    e[12] = 0; e[13] = 0; e[14] = 0; e[15] = 1;
+                    return this;
+                },
+                copy: function (m) {
+                    this.elements.set(m.elements);
+                    return this;
+                },
+                multiplyMatrices: function (a, b) {
+                    const ae = a.elements, be = b.elements, te = this.elements;
+
+                    const a11 = ae[0], a12 = ae[4], a13 = ae[8], a14 = ae[12];
+                    const a21 = ae[1], a22 = ae[5], a23 = ae[9], a24 = ae[13];
+                    const a31 = ae[2], a32 = ae[6], a33 = ae[10], a34 = ae[14];
+                    const a41 = ae[3], a42 = ae[7], a43 = ae[11], a44 = ae[15];
+
+                    const b11 = be[0], b12 = be[4], b13 = be[8], b14 = be[12];
+                    const b21 = be[1], b22 = be[5], b23 = be[9], b24 = be[13];
+                    const b31 = be[2], b32 = be[6], b33 = be[10], b34 = be[14];
+                    const b41 = be[3], b42 = be[7], b43 = be[11], b44 = be[15];
+
+                    te[0] = a11 * b11 + a12 * b21 + a13 * b31 + a14 * b41;
+                    te[4] = a11 * b12 + a12 * b22 + a13 * b32 + a14 * b42;
+                    te[8] = a11 * b13 + a12 * b23 + a13 * b33 + a14 * b43;
+                    te[12] = a11 * b14 + a12 * b24 + a13 * b34 + a14 * b44;
+
+                    te[1] = a21 * b11 + a22 * b21 + a23 * b31 + a24 * b41;
+                    te[5] = a21 * b12 + a22 * b22 + a23 * b32 + a24 * b42;
+                    te[9] = a21 * b13 + a22 * b23 + a23 * b33 + a24 * b43;
+                    te[13] = a21 * b14 + a22 * b24 + a23 * b34 + a24 * b44;
+
+                    te[2] = a31 * b11 + a32 * b21 + a33 * b31 + a34 * b41;
+                    te[6] = a31 * b12 + a32 * b22 + a33 * b32 + a34 * b42;
+                    te[10] = a31 * b13 + a32 * b23 + a33 * b33 + a34 * b43;
+                    te[14] = a31 * b14 + a32 * b24 + a33 * b34 + a34 * b44;
+
+                    te[3] = a41 * b11 + a42 * b21 + a43 * b31 + a44 * b41;
+                    te[7] = a41 * b12 + a42 * b22 + a43 * b32 + a44 * b42;
+                    te[11] = a41 * b13 + a42 * b23 + a43 * b33 + a44 * b43;
+                    te[15] = a41 * b14 + a42 * b24 + a43 * b34 + a44 * b44;
+
+                    return this;
+                }
+            };
+
+            //--------------------------------------------------
+            // 2) Basic Object3D, Scene, Camera
+            //--------------------------------------------------
+
+            function Object3D() {
+                this.position = new Vector3();
+                this.rotation = new Euler();
+                this.scale = new Vector3(1, 1, 1);
+                this.children = [];
+                this.parent = null;
+                this.matrix = new Matrix4();
+                this.matrixWorld = new Matrix4();
+                this.matrixAutoUpdate = true;
+            }
+            Object3D.prototype = {
+                add: function (c) {if (c !== this) {this.children.push(c); c.parent = this;} },
+                remove: function (c) {const i = this.children.indexOf(c); if (i !== -1) {c.parent = null; this.children.splice(i, 1);} },
+                updateMatrix: function () {
+                    // naive
+                    this.matrix.identity();
+                    const e = this.matrix.elements;
+
+                    const sx = this.scale.x, sy = this.scale.y, sz = this.scale.z;
+                    e[0] *= sx; e[5] *= sy; e[10] *= sz;
+
+                    const rx = this.rotation.x, ry = this.rotation.y, rz = this.rotation.z;
+                    // rotateZ(rz)
+                    const cosZ = Math.cos(rz), sinZ = Math.sin(rz);
+                    let m0 = e[0], m1 = e[1], m4 = e[4], m5 = e[5], m8 = e[8], m9 = e[9];
+                    e[0] = m0 * cosZ - m1 * sinZ; e[1] = m0 * sinZ + m1 * cosZ;
+                    e[4] = m4 * cosZ - m5 * sinZ; e[5] = m4 * sinZ + m5 * cosZ;
+                    let old8 = m8, old9 = m9;
+                    e[8] = old8 * cosZ - old9 * sinZ; e[9] = old8 * sinZ + old9 * cosZ;
+
+                    // rotateY(ry)
+                    const cosY = Math.cos(ry), sinY = Math.sin(ry);
+                    m0 = e[0]; let m2 = e[2]; m4 = e[4]; let m6 = e[6]; m8 = e[8]; let m10 = e[10];
+                    e[0] = m0 * cosY + m2 * sinY;
+                    e[2] = -m0 * sinY + m2 * cosY;
+                    e[4] = m4 * cosY + m6 * sinY;
+                    e[6] = -m4 * sinY + m6 * cosY;
+                    e[8] = m8 * cosY + m10 * sinY;
+                    e[10] = -m8 * sinY + m10 * cosY;
+
+                    // rotateX(rx)
+                    const cosX = Math.cos(rx), sinX = Math.sin(rx);
+                    let old1 = e[1], old2 = e[2], old5 = e[5], old6 = e[6], old9b = e[9], old10 = e[10];
+                    e[1] = old1 * cosX - old2 * sinX;
+                    e[2] = old1 * sinX + old2 * cosX;
+                    e[5] = old5 * cosX - old6 * sinX;
+                    e[6] = old5 * sinX + old6 * cosX;
+                    e[9] = old9b * cosX - old10 * sinX;
+                    e[10] = old9b * sinX + old10 * cosX;
+
+                    // translation
+                    e[12] = this.position.x;
+                    e[13] = this.position.y;
+                    e[14] = this.position.z;
+                },
+                updateMatrixWorld: function (force) {
+                    if (this.matrixAutoUpdate) this.updateMatrix();
+                    if (!this.parent || force) {
+                        this.matrixWorld.copy(this.matrix);
+                    } else {
+                        this.matrixWorld.multiplyMatrices(this.parent.matrixWorld, this.matrix);
+                    }
+                    for (let c of this.children) {
+                        c.updateMatrixWorld(force);
+                    }
+                }
+            };
+
+            function Scene() {
+                Object3D.call(this);
+            }
+            Scene.prototype = Object.create(Object3D.prototype);
+
+            function PerspectiveCamera(fov, aspect, near, far) {
+                Object3D.call(this);
+                this.fov = fov; this.aspect = aspect; this.near = near; this.far = far;
+            }
+            PerspectiveCamera.prototype = Object.create(Object3D.prototype);
+
+            //--------------------------------------------------
+            // 3) Geometry (Box, Cylinder), Material
+            //--------------------------------------------------
+
+            function BoxGeometry(width, height, depth) {
+                this.positions = [];
+                this.normals = [];
+                this.indices = [];
+                this.boundingBox = {min: new Vector3(), max: new Vector3()};
+                buildBox(this, width, height, depth);
+            }
+
+            function buildBox(geo, w, h, d) {
+                const x = w * 0.5, y = h * 0.5, z = d * 0.5;
+                const positions = [
+                    // front
+                    -x, -y, z, x, -y, z, x, y, z, -x, y, z,
+                    // back
+                    x, -y, -z, -x, -y, -z, -x, y, -z, x, y, -z,
+                    // left
+                    -x, -y, -z, -x, -y, z, -x, y, z, -x, y, -z,
+                    // right
+                    x, -y, z, x, -y, -z, x, y, -z, x, y, z,
+                    // top
+                    -x, y, z, x, y, z, x, y, -z, -x, y, -z,
+                    // bottom
+                    -x, -y, -z, x, -y, -z, x, -y, z, -x, -y, z
+                ];
+                const normals = [
+                    0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1,
+                    0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1,
+                    -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0,
+                    1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0,
+                    0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0,
+                    0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0
+                ];
+                const indices = [
+                    0, 1, 2, 2, 3, 0,
+                    4, 5, 6, 6, 7, 4,
+                    8, 9, 10, 10, 11, 8,
+                    12, 13, 14, 14, 15, 12,
+                    16, 17, 18, 18, 19, 16,
+                    20, 21, 22, 22, 23, 20
+                ];
+                geo.positions = positions;
+                geo.normals = normals;
+                geo.indices = indices;
+            }
+
+            function CylinderGeometry(rt, rb, h, segs) {
+                this.positions = [];
+                this.normals = [];
+                this.indices = [];
+                this.boundingBox = {min: new Vector3(), max: new Vector3()};
+                buildCyl(this, rt, rb, h, segs);
+            }
+
+            function buildCyl(geo, rt, rb, h, segs) {
+                // cylinder side only
+                const positions = [];
+                const normals = [];
+                const indices = [];
+                for (let i = 0; i <= segs; i++) {
+                    const theta = (i / segs) * Math.PI * 2;
+                    const cosT = Math.cos(theta), sinT = Math.sin(theta);
+                    // top
+                    const x1 = rt * cosT, y1 = h * 0.5, z1 = rt * sinT;
+                    // bottom
+                    const x2 = rb * cosT, y2 = -h * 0.5, z2 = rb * sinT;
+                    positions.push(x1, y1, z1, x2, y2, z2);
+                    // approximate normal
+                    normals.push(cosT, 0, sinT, cosT, 0, sinT);
+                }
+                for (let i = 0; i < segs; i++) {
+                    const i1 = i * 2, i2 = i * 2 + 1, i3 = (i + 1) * 2, i4 = (i + 1) * 2 + 1;
+                    indices.push(i1, i4, i3, i1, i2, i4);
+                }
+                geo.positions = positions;
+                geo.normals = normals;
+                geo.indices = indices;
+            }
+
+            function MeshLambertMaterial(params) {
+                params = params || {};
+                this.color = params.color || 0xffffff;
+                this.opacity = (params.opacity !== undefined) ? params.opacity : 1;
+                this.transparent = !!params.transparent;
+            }
+
+            //--------------------------------------------------
+            // 4) Mesh, Group, Lights
+            //--------------------------------------------------
+
+            function Mesh(geometry, material) {
+                Object3D.call(this);
+                this.geometry = geometry;
+                this.material = material;
+            }
+            Mesh.prototype = Object.create(Object3D.prototype);
+
+            function Group() {Object3D.call(this);}
+            Group.prototype = Object.create(Object3D.prototype);
+
+            function DirectionalLight(color, intensity) {
+                Object3D.call(this);
+                this.color = color;
+                this.intensity = intensity || 1;
+            }
+            DirectionalLight.prototype = Object.create(Object3D.prototype);
+
+            function AmbientLight(color, intensity) {
+                Object3D.call(this);
+                this.color = color;
+                this.intensity = intensity || 1;
+            }
+            AmbientLight.prototype = Object.create(Object3D.prototype);
+
+            //--------------------------------------------------
+            // 5) WebGLRenderer (with VAO fallback approach)
+            //--------------------------------------------------
+            function WebGLRenderer() {
+                this.canvas = document.createElement("canvas");
+                this.gl = null;
+                this._vaoExt = null; // for OES_vertex_array_object fallback
+                this._useVAO = false;
+                this._vaoMap = new WeakMap(); // geometry -> { vao, buffers }
+
+                // Attempt to get WebGL2
+                let gl2 = null;
+                try {
+                    gl2 = this.canvas.getContext("webgl2", {antialias: true});
+                } catch (e) { }
+                if (gl2) {
+                    // Great, WebGL2
+                    this.gl = gl2;
+                    this._useVAO = true; // gl2 supports createVertexArray
+                    // console.log("Using WebGL2 with native VAOs");
+                } else {
+                    // fallback to WebGL1
+                    let gl1 = null;
+                    try {
+                        gl1 = this.canvas.getContext("webgl", {antialias: true});
+                    } catch (e) { }
+                    if (!gl1) {
+                        alert("WebGL not supported");
+                        throw new Error("No WebGL context");
+                    }
+                    this.gl = gl1;
+                    // check extension
+                    const ext = this.gl.getExtension('OES_vertex_array_object');
+                    if (ext) {
+                        // console.log("Using OES_vertex_array_object extension");
+                        this._vaoExt = ext;
+                        this._useVAO = true;
+                    } else {
+                        // console.log("No VAO extension. Fallback to manual binding each draw.");
+                        this._useVAO = false;
+                    }
+                }
+
+                this.setSize(window.innerWidth, window.innerHeight);
+                document.body.appendChild(this.canvas);
+
+                const gl = this.gl;
+                gl.enable(gl.DEPTH_TEST);
+                gl.enable(gl.CULL_FACE);
+                gl.cullFace(gl.BACK);
+
+                this._program = null; // we store lambert program
+            }
+            WebGLRenderer.prototype = {
+                setSize: function (w, h) {
+                    this.canvas.width = w;
+                    this.canvas.height = h;
+                    this.canvas.style.width = w + "px";
+                    this.canvas.style.height = h + "px";
+                    this.gl.viewport(0, 0, w, h);
+                },
+                render: function (scene, camera) {
+                    camera.updateMatrixWorld(true);
+                    scene.updateMatrixWorld(true);
+
+                    const gl = this.gl;
+                    gl.clearColor(0.13, 0.13, 0.13, 1);
+                    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+                    // build naive projection
+                    const aspect = camera.aspect || 1;
+                    const fovRad = camera.fov * (Math.PI / 180);
+                    const f = 1.0 / Math.tan(fovRad / 2);
+                    const rangeInv = 1 / (camera.near - camera.far);
+                    const proj = new Matrix4();
+                    const pe = proj.elements;
+                    pe[0] = f / aspect; pe[4] = 0; pe[8] = 0; pe[12] = 0;
+                    pe[1] = 0; pe[5] = f; pe[9] = 0; pe[13] = 0;
+                    pe[2] = 0; pe[6] = 0; pe[10] = (camera.near + camera.far) * rangeInv; pe[14] = 2 * camera.near * camera.far * rangeInv;
+                    pe[3] = 0; pe[7] = 0; pe[11] = -1; pe[15] = 0;
+
+                    // gather lights
+                    const lights = [];
+                    function gather(o) {
+                        if (o instanceof DirectionalLight || o instanceof AmbientLight) {
+                            lights.push(o);
+                        }
+                        o.children.forEach(c => gather(c));
+                    }
+                    gather(scene);
+
+                    if (!this._program) this._program = createLambertProgram(gl);
+                    gl.useProgram(this._program.program);
+
+                    // draw scene
+                    const self = this;
+                    function drawObj(obj) {
+                        if (obj instanceof Mesh) {
+                            drawMeshLambert(self, obj, proj, camera, lights);
+                        }
+                        obj.children.forEach(c => drawObj(c));
+                    }
+                    drawObj(scene);
+                }
+            };
+
+            // Creates or returns VAO from geometry
+            function setupGeometry(renderer, geometry) {
+                const gl = renderer.gl;
+                if (renderer._vaoMap.has(geometry)) {
+                    return renderer._vaoMap.get(geometry);
+                }
+                // create new
+                const data = {};
+                // create buffers
+                data.vertexBuffer = gl.createBuffer();
+                data.normalBuffer = gl.createBuffer();
+                data.indexBuffer = gl.createBuffer();
+
+                // upload data
+                gl.bindBuffer(gl.ARRAY_BUFFER, data.vertexBuffer);
+                gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(geometry.positions), gl.STATIC_DRAW);
+
+                gl.bindBuffer(gl.ARRAY_BUFFER, data.normalBuffer);
+                gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(geometry.normals), gl.STATIC_DRAW);
+
+                gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, data.indexBuffer);
+                gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(geometry.indices), gl.STATIC_DRAW);
+
+                data.numIndices = geometry.indices.length;
+
+                if (renderer._useVAO) {
+                    // WebGL2 or OES
+                    if (renderer.gl.createVertexArray) {
+                        // WebGL2
+                        data.vao = gl.createVertexArray();
+                        gl.bindVertexArray(data.vao);
+                    } else {
+                        // extension
+                        data.vao = renderer._vaoExt.createVertexArrayOES();
+                        renderer._vaoExt.bindVertexArrayOES(data.vao);
+                    }
+
+                    gl.bindBuffer(gl.ARRAY_BUFFER, data.vertexBuffer);
+                    gl.enableVertexAttribArray(0);
+                    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+
+                    gl.bindBuffer(gl.ARRAY_BUFFER, data.normalBuffer);
+                    gl.enableVertexAttribArray(1);
+                    gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0);
+
+                    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, data.indexBuffer);
+
+                    if (renderer.gl.createVertexArray) {
+                        gl.bindVertexArray(null);
+                    } else {
+                        renderer._vaoExt.bindVertexArrayOES(null);
+                    }
+                }
+
+                renderer._vaoMap.set(geometry, data);
+                return data;
+            }
+
+            function drawMeshLambert(renderer, mesh, proj, camera, lights) {
+                const gl = renderer.gl;
+                const prog = renderer._program;
+                const geom = mesh.geometry;
+                const data = setupGeometry(renderer, geom);
+
+                // compute modelWorld
+                const modelWorld = new Matrix4().copy(mesh.matrixWorld);
+
+                // compute MVP
+                const MVP = new Matrix4().multiplyMatrices(proj, modelWorld);
+                gl.uniformMatrix4fv(prog.uMVP, false, MVP.elements);
+
+                // gather directional + ambient
+                let dirColor = [0, 0, 0], dirVec = [0, 0, 0], ambColor = [0, 0, 0];
+                for (let l of lights) {
+                    if (l instanceof DirectionalLight) {
+                        const c = int2rgb(l.color);
+                        dirColor[0] += c[0] * l.intensity;
+                        dirColor[1] += c[1] * l.intensity;
+                        dirColor[2] += c[2] * l.intensity;
+                        // naive direction
+                        const len = Math.sqrt(l.position.x * l.position.x + l.position.y * l.position.y + l.position.z * l.position.z);
+                        if (len > 0) {
+                            dirVec[0] += -l.position.x / len;
+                            dirVec[1] += -l.position.y / len;
+                            dirVec[2] += -l.position.z / len;
+                        }
+                    } else if (l instanceof AmbientLight) {
+                        const c = int2rgb(l.color);
+                        ambColor[0] += c[0] * l.intensity;
+                        ambColor[1] += c[1] * l.intensity;
+                        ambColor[2] += c[2] * l.intensity;
+                    }
+                }
+
+                const matC = int2rgb(mesh.material.color);
+                gl.uniform3f(prog.uMaterialColor, matC[0], matC[1], matC[2]);
+                gl.uniform3f(prog.uAmbientColor, ambColor[0], ambColor[1], ambColor[2]);
+                gl.uniform3f(prog.uDirColor, dirColor[0], dirColor[1], dirColor[2]);
+                gl.uniform3f(prog.uDirVector, dirVec[0], dirVec[1], dirVec[2]);
+                gl.uniform1f(prog.uOpacity, mesh.material.opacity);
+
+                // transparency
+                if (mesh.material.transparent && mesh.material.opacity < 1) {
+                    gl.enable(gl.BLEND);
+                    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+                } else {
+                    gl.disable(gl.BLEND);
+                }
+
+                // bind VAO or do manual
+                if (renderer._useVAO) {
+                    // either gl.bindVertexArray or extension
+                    if (gl.createVertexArray) {
+                        gl.bindVertexArray(data.vao);
+                    } else {
+                        renderer._vaoExt.bindVertexArrayOES(data.vao);
+                    }
+                    gl.drawElements(gl.TRIANGLES, data.numIndices, gl.UNSIGNED_SHORT, 0);
+                    // unbind
+                    if (gl.createVertexArray) {
+                        gl.bindVertexArray(null);
+                    } else {
+                        renderer._vaoExt.bindVertexArrayOES(null);
+                    }
+                } else {
+                    // fallback: manually bind buffers each time
+                    gl.bindBuffer(gl.ARRAY_BUFFER, data.vertexBuffer);
+                    gl.enableVertexAttribArray(0);
+                    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+
+                    gl.bindBuffer(gl.ARRAY_BUFFER, data.normalBuffer);
+                    gl.enableVertexAttribArray(1);
+                    gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0);
+
+                    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, data.indexBuffer);
+                    gl.drawElements(gl.TRIANGLES, data.numIndices, gl.UNSIGNED_SHORT, 0);
+                    // no unbind
+                }
+            }
+
+            function createLambertProgram(gl) {
+                const vsSource = `attribute vec3 position;
+  attribute vec3 normal;
+  uniform mat4 uMVP;
+  varying vec3 vNormal;
+  void main(){
+    vNormal=normal;
+    gl_Position=uMVP*vec4(position,1.0);
+  }`;
+                const fsSource = `precision mediump float;
+  varying vec3 vNormal;
+  uniform vec3 uMaterialColor;
+  uniform vec3 uAmbientColor;
+  uniform vec3 uDirColor;
+  uniform vec3 uDirVector;
+  uniform float uOpacity;
+  void main(){
+    vec3 n=normalize(vNormal);
+    float ndl=max(dot(n, normalize(uDirVector)),0.0);
+    vec3 diffuse=ndl*uDirColor*uMaterialColor;
+    vec3 ambient=uAmbientColor*uMaterialColor;
+    gl_FragColor=vec4(diffuse+ambient, uOpacity);
+  }`;
+
+                const vs = compileShader(gl, vsSource, gl.VERTEX_SHADER);
+                const fs = compileShader(gl, fsSource, gl.FRAGMENT_SHADER);
+                const program = gl.createProgram();
+                gl.attachShader(program, vs);
+                gl.attachShader(program, fs);
+                gl.bindAttribLocation(program, 0, "position");
+                gl.bindAttribLocation(program, 1, "normal");
+                gl.linkProgram(program);
+                if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                    console.error(gl.getProgramInfoLog(program));
+                    throw new Error("Shader link failed");
+                }
+                return {
+                    program,
+                    uMVP: gl.getUniformLocation(program, "uMVP"),
+                    uMaterialColor: gl.getUniformLocation(program, "uMaterialColor"),
+                    uAmbientColor: gl.getUniformLocation(program, "uAmbientColor"),
+                    uDirColor: gl.getUniformLocation(program, "uDirColor"),
+                    uDirVector: gl.getUniformLocation(program, "uDirVector"),
+                    uOpacity: gl.getUniformLocation(program, "uOpacity")
+                };
+            }
+
+            function compileShader(gl, src, type) {
+                const s = gl.createShader(type);
+                gl.shaderSource(s, src);
+                gl.compileShader(s);
+                if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+                    console.error(gl.getShaderInfoLog(s));
+                    throw new Error("Shader compile error");
+                }
+                return s;
+            }
+
+            function int2rgb(c) {
+                const r = ((c >> 16) & 255) / 255, g = ((c >> 8) & 255) / 255, b = (c & 255) / 255;
+                return [r, g, b];
+            }
+
+            // Attach to global
+            global.THREE = {
+                Vector3,
+                Euler,
+                Matrix4,
+                Object3D,
+                Scene,
+                PerspectiveCamera,
+                BoxGeometry,
+                CylinderGeometry,
+                MeshLambertMaterial,
+                Mesh,
+                Group,
+                DirectionalLight,
+                AmbientLight,
+                WebGLRenderer
+            };
+
+        })(window);
+    </script>
+
+    <script>
+        /*
+          =======================================
+           A MINIMAL ORBITCONTROLS-LIKE
+          =======================================
+        */
+        (function () {
+            const THREE = window.THREE;
+            function SimpleOrbitControls(camera, canvas) {
+                let isDown = false;
+                let sx = 0, sy = 0;
+                let rx = 0, ry = 0;
+                const sense = 0.005;
+                canvas.addEventListener("mousedown", (e) => {
+                    isDown = true;
+                    sx = e.clientX; sy = e.clientY;
+                });
+                canvas.addEventListener("mousemove", (e) => {
+                    if (!isDown) return;
+                    const dx = e.clientX - sx, dy = e.clientY - sy;
+                    sx = e.clientX; sy = e.clientY;
+                    ry += dx * sense;
+                    rx += dy * sense;
+                    camera.rotation.y = ry;
+                    camera.rotation.x = rx;
+                });
+                canvas.addEventListener("mouseup", () => {isDown = false;});
+            }
+            THREE.OrbitControls = SimpleOrbitControls;
+        })();
+    </script>
+
+    <script>
+        /*
+          =====================
+          PUZZLE DEMO CODE
+          =====================
+        */
+        (function () {
+            const {
+                Scene, PerspectiveCamera, WebGLRenderer,
+                DirectionalLight, AmbientLight,
+                BoxGeometry, CylinderGeometry, MeshLambertMaterial,
+                Mesh, Vector3,
+                OrbitControls
+            } = window.THREE;
+
+            let scene, camera, renderer, controls;
+            let outerCyl, silver1, silver2, goldPiece;
+            const puzzleMeshes = [];
+            let currentStep = 0;
+
+            const steps = [
+                {
+                    outerPos: [-10, 0, 0], outerRot: [0, 0, 0],
+                    s1Pos: [-3, 5, 0], s1Rot: [0, 0, 0],
+                    s2Pos: [3, 5, 0], s2Rot: [0, 0, 0],
+                    goldPos: [10, 0, 0], goldRot: [0, 0, 0]
+                },
+                {
+                    outerPos: [0, 0, 0], outerRot: [0, 0, 0],
+                    s1Pos: [-2, 2, 0], s1Rot: [0, 0, 0],
+                    s2Pos: [2, 2, 0], s2Rot: [0, 0, 0],
+                    goldPos: [6, 0, 0], goldRot: [0, 0, 0]
+                },
+                {
+                    outerPos: [0, 0, 0], outerRot: [0, 0, 0],
+                    s1Pos: [-0.5, 0, 0], s1Rot: [Math.PI * 0.5, 0, 0],
+                    s2Pos: [2, 2, 0], s2Rot: [0, 0, 0],
+                    goldPos: [6, 0, 0], goldRot: [0, 0, 0]
+                },
+                {
+                    outerPos: [0, 0, 0], outerRot: [0, 0, 0],
+                    s1Pos: [-0.5, 0, 0], s1Rot: [Math.PI * 0.5, 0, 0],
+                    s2Pos: [0.5, 0, 0], s2Rot: [-Math.PI * 0.5, 0, 0],
+                    goldPos: [6, 0, 0], goldRot: [0, 0, 0]
+                },
+                {
+                    outerPos: [0, 0, 0], outerRot: [0, 0, 0],
+                    s1Pos: [-0.5, 0, 0], s1Rot: [Math.PI * 0.5, 0, 0],
+                    s2Pos: [0.5, 0, 0], s2Rot: [-Math.PI * 0.5, 0, 0],
+                    goldPos: [0, 0, 0], goldRot: [0, 0, 0]
+                },
+                {
+                    outerPos: [0, 0, 0], outerRot: [0, 0, 0],
+                    s1Pos: [-0.3, 0, 0], s1Rot: [Math.PI * 0.5, 0, 0],
+                    s2Pos: [0.3, 0, 0], s2Rot: [-Math.PI * 0.5, 0, 0],
+                    goldPos: [0, 0, 0], goldRot: [0, 0, 0]
+                }
+            ];
+
+            function init() {
+                scene = new Scene();
+                camera = new PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+                camera.position.set(0, 0, 30);
+
+                renderer = new WebGLRenderer();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+
+                document.body.appendChild(renderer.canvas);
+
+                controls = new OrbitControls(camera, renderer.canvas);
+
+                // lights
+                const dLight = new DirectionalLight(0xffffff, 1);
+                dLight.position.set(10, 10, 10);
+                scene.add(dLight);
+                const amb = new AmbientLight(0xffffff, 0.3);
+                scene.add(amb);
+
+                window.addEventListener("resize", onResize);
+
+                createOuterCylinder();
+                createSilver1();
+                createSilver2();
+                createGold();
+
+                applyStep(0);
+
+                animate();
+            }
+
+            function onResize() {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateMatrixWorld(true);
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+
+            function createOuterCylinder() {
+                const geom = new CylinderGeometry(5, 5, 6, 32);
+                const mat = new MeshLambertMaterial({color: 0x888888, transparent: true, opacity: 0.6});
+                outerCyl = new Mesh(geom, mat);
+                scene.add(outerCyl);
+                puzzleMeshes.push(outerCyl);
+
+                const pegMat = new MeshLambertMaterial({color: 0xffcc00});
+                addPeg(outerCyl, pegMat, 2, 0, 0);
+                addPeg(outerCyl, pegMat, -1, 1, 1);
+                addPeg(outerCyl, pegMat, -2, -1, -1);
+            }
+
+            function createSilver1() {
+                const geom = new CylinderGeometry(5, 5, 3, 32);
+                const mat = new MeshLambertMaterial({color: 0xc0c0c0, transparent: true, opacity: 0.6});
+                silver1 = new Mesh(geom, mat);
+                silver1.rotation.z = Math.PI * 0.5;
+                scene.add(silver1);
+                puzzleMeshes.push(silver1);
+
+                const pegExt = new MeshLambertMaterial({color: 0x00ff00});
+                addPeg(silver1, pegExt, 2, 0, 0);
+                addPeg(silver1, pegExt, 2, 1, 0);
+
+                const pegInt = new MeshLambertMaterial({color: 0xff0000});
+                addPeg(silver1, pegInt, 1, 0, 1);
+                addPeg(silver1, pegInt, 2, 0, 1);
+            }
+
+            function createSilver2() {
+                const geom = new CylinderGeometry(5, 5, 3, 32);
+                const mat = new MeshLambertMaterial({color: 0xc0c0c0, transparent: true, opacity: 0.6});
+                silver2 = new Mesh(geom, mat);
+                silver2.rotation.z = Math.PI * 0.5;
+                scene.add(silver2);
+                puzzleMeshes.push(silver2);
+
+                const pegExt = new MeshLambertMaterial({color: 0x00ff00});
+                addPeg(silver2, pegExt, 2, 1, 0);
+                addPeg(silver2, pegExt, 2, -1, 0);
+
+                const pegInt = new MeshLambertMaterial({color: 0xff0000});
+                addPeg(silver2, pegInt, -1, 0, 1);
+                addPeg(silver2, pegInt, 1, 0, 1);
+            }
+
+            function createGold() {
+                const geom = new CylinderGeometry(2.5, 2.5, 0.5, 32);
+                const mat = new MeshLambertMaterial({color: 0xffd700, transparent: true, opacity: 0.8});
+                goldPiece = new Mesh(geom, mat);
+                scene.add(goldPiece);
+                puzzleMeshes.push(goldPiece);
+
+                const pegMat = new MeshLambertMaterial({color: 0x0000ff});
+                addPeg(goldPiece, pegMat, 1, 0, 0);
+                addPeg(goldPiece, pegMat, -1, 0, 0);
+                addPeg(goldPiece, pegMat, 0, 1, 0);
+            }
+
+            function addPeg(parent, mat, px, py, pz) {
+                const box = new BoxGeometry(0.3, 0.3, 0.3);
+                const peg = new Mesh(box, mat);
+                peg.position.set(px, py, pz);
+                parent.add(peg);
+            }
+
+            function applyStep(i) {
+                currentStep = i;
+                const s = steps[i];
+                setPosRot(outerCyl, s.outerPos, s.outerRot);
+                setPosRot(silver1, s.s1Pos, s.s1Rot);
+                setPosRot(silver2, s.s2Pos, s.s2Rot);
+                setPosRot(goldPiece, s.goldPos, s.goldRot);
+                checkOverlap();
+            }
+
+            function animateToStep(i) {
+                const frames = 60;
+                let frame = 0;
+                const start = {
+                    outerPos: getPos(outerCyl), outerRot: getRot(outerCyl),
+                    s1Pos: getPos(silver1), s1Rot: getRot(silver1),
+                    s2Pos: getPos(silver2), s2Rot: getRot(silver2),
+                    goldPos: getPos(goldPiece), goldRot: getRot(goldPiece),
+                };
+                const end = steps[i];
+                function loop() {
+                    frame++;
+                    let t = frame / frames;
+                    if (t > 1) t = 1;
+
+                    lerpPosRot(outerCyl, start.outerPos, start.outerRot, end.outerPos, end.outerRot, t);
+                    lerpPosRot(silver1, start.s1Pos, start.s1Rot, end.s1Pos, end.s1Rot, t);
+                    lerpPosRot(silver2, start.s2Pos, start.s2Rot, end.s2Pos, end.s2Rot, t);
+                    lerpPosRot(goldPiece, start.goldPos, start.goldRot, end.goldPos, end.goldRot, t);
+
+                    checkOverlap();
+
+                    if (t < 1) {
+                        requestAnimationFrame(loop);
+                    } else {
+                        currentStep = i;
+                    }
+                }
+                loop();
+            }
+
+            function getPos(m) {return [m.position.x, m.position.y, m.position.z];}
+            function getRot(m) {return [m.rotation.x, m.rotation.y, m.rotation.z];}
+            function setPosRot(m, pos, rot) {
+                m.position.set(pos[0], pos[1], pos[2]);
+                m.rotation.x = rot[0];
+                m.rotation.y = rot[1];
+                m.rotation.z = rot[2];
+            }
+            function lerp(a, b, t) {return a + (b - a) * t;}
+            function lerpPosRot(m, sp, sr, ep, er, t) {
+                m.position.x = lerp(sp[0], ep[0], t);
+                m.position.y = lerp(sp[1], ep[1], t);
+                m.position.z = lerp(sp[2], ep[2], t);
+                m.rotation.x = lerp(sr[0], er[0], t);
+                m.rotation.y = lerp(sr[1], er[1], t);
+                m.rotation.z = lerp(sr[2], er[2], t);
+            }
+
+            function checkOverlap() {
+                const msg = document.getElementById("message");
+                msg.textContent = "";
+                puzzleMeshes.forEach(m => m.updateMatrixWorld(true));
+                puzzleMeshes.forEach(m => computeBoundingBox(m));
+                for (let i = 0; i < puzzleMeshes.length; i++) {
+                    for (let j = i + 1; j < puzzleMeshes.length; j++) {
+                        if (meshesCollide(puzzleMeshes[i], puzzleMeshes[j])) {
+                            msg.textContent = "Overlap Detected!";
+                            return;
+                        }
+                    }
+                }
+            }
+
+            function computeBoundingBox(mesh) {
+                const geo = mesh.geometry;
+                const min = new Vector3(Infinity, Infinity, Infinity);
+                const max = new Vector3(-Infinity, -Infinity, -Infinity);
+                for (let i = 0; i < geo.positions.length; i += 3) {
+                    const px = geo.positions[i], py = geo.positions[i + 1], pz = geo.positions[i + 2];
+                    const wv = transformV(px, py, pz, mesh.matrixWorld);
+                    if (wv.x < min.x) min.x = wv.x;
+                    if (wv.y < min.y) min.y = wv.y;
+                    if (wv.z < min.z) min.z = wv.z;
+                    if (wv.x > max.x) max.x = wv.x;
+                    if (wv.y > max.y) max.y = wv.y;
+                    if (wv.z > max.z) max.z = wv.z;
+                }
+                geo.boundingBox.min.copy(min);
+                geo.boundingBox.max.copy(max);
+            }
+
+            function transformV(x, y, z, mat4) {
+                const e = mat4.elements;
+                const rx = e[0] * x + e[4] * y + e[8] * z + e[12];
+                const ry = e[1] * x + e[5] * y + e[9] * z + e[13];
+                const rz = e[2] * x + e[6] * y + e[10] * z + e[14];
+                return new Vector3(rx, ry, rz);
+            }
+
+            function meshesCollide(ma, mb) {
+                const ab = ma.geometry.boundingBox, bb = mb.geometry.boundingBox;
+                return !(
+                    ab.max.x < bb.min.x || ab.min.x > bb.max.x ||
+                    ab.max.y < bb.min.y || ab.min.y > bb.max.y ||
+                    ab.max.z < bb.min.z || ab.min.z > ab.max.z
+                );
+            }
+
+            function animate() {
+                requestAnimationFrame(animate);
+                renderer.render(scene, camera);
+            }
+
+            document.getElementById("nextBtn").addEventListener("click", () => {
+                if (currentStep < steps.length - 1) {
+                    animateToStep(currentStep + 1);
+                }
+            });
+            document.getElementById("prevBtn").addEventListener("click", () => {
+                if (currentStep > 0) {
+                    animateToStep(currentStep - 1);
+                }
+            });
+
+            init();
+        })();
+    </script>
+</body>
+
+</html>

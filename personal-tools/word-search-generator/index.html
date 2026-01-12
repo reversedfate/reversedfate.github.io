@@ -1,0 +1,1252 @@
+<!DOCTYPE html>
+<html lang="lv">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Word Search Generator</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        :root {
+            --panel-width: 320px;
+            --bg: #1a1a2e;
+            --panel-bg: #16213e;
+            --accent: #e94560;
+            --text: #eee;
+            --text-muted: #888;
+            --input-bg: #0f3460;
+            --border: #1a3a5c;
+            --section-bg: #0d1b2a;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: 'Segoe UI', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+        }
+
+        #app {
+            display: flex;
+            height: 100%;
+            position: relative;
+        }
+
+        /* Panel Toggle Button */
+        #panelToggle {
+            position: absolute;
+            left: var(--panel-width);
+            top: 50%;
+            transform: translateY(-50%);
+            width: 24px;
+            height: 60px;
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-left: none;
+            border-radius: 0 6px 6px 0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+
+        #panelToggle:hover {
+            background: var(--input-bg);
+            color: var(--accent);
+        }
+
+        #app.panel-collapsed #panelToggle {
+            left: 0;
+        }
+
+        #panelToggle::after {
+            content: '‹';
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        #app.panel-collapsed #panelToggle::after {
+            content: '›';
+        }
+
+        /* Panel */
+        #panel {
+            width: var(--panel-width);
+            min-width: var(--panel-width);
+            background: var(--panel-bg);
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--border);
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        #app.panel-collapsed #panel {
+            width: 0;
+            min-width: 0;
+            border-right: none;
+        }
+
+        #panelContent {
+            padding: 16px;
+            overflow-y: auto;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        #panel h2 {
+            margin: 0 0 4px 0;
+            font-size: 16px;
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        /* Collapsible Sections */
+        .section {
+            background: var(--section-bg);
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.15s;
+        }
+
+        .section-header:hover {
+            background: rgba(255,255,255,0.03);
+        }
+
+        .section-title {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+        }
+
+        .section-toggle {
+            font-size: 10px;
+            color: var(--text-muted);
+            transition: transform 0.2s;
+        }
+
+        .section.collapsed .section-toggle {
+            transform: rotate(-90deg);
+        }
+
+        .section-content {
+            padding: 12px;
+            padding-top: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-height: 500px;
+            transition: max-height 0.3s ease, padding 0.3s ease, opacity 0.2s ease;
+        }
+
+        .section.collapsed .section-content {
+            max-height: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+            opacity: 0;
+            overflow: hidden;
+        }
+
+        /* Form Elements */
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .form-group label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .form-group input[type="number"],
+        .form-group input[type="text"],
+        .form-group textarea,
+        .form-group select {
+            background: var(--input-bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 8px 10px;
+            color: var(--text);
+            font-size: 13px;
+            transition: border-color 0.15s;
+        }
+
+        .form-group input[type="color"] {
+            background: var(--input-bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 2px;
+            height: 32px;
+            cursor: pointer;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+            font-family: 'Consolas', monospace;
+            font-size: 12px;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .row {
+            display: flex;
+            gap: 8px;
+        }
+
+        .row .form-group {
+            flex: 1;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--accent);
+        }
+
+        .checkbox-group label {
+            font-size: 12px;
+            cursor: pointer;
+            color: var(--text);
+        }
+
+        /* Seed Input */
+        .seed-row {
+            display: flex;
+            gap: 6px;
+        }
+
+        .seed-row input {
+            flex: 1;
+        }
+
+        .seed-row button {
+            padding: 8px 10px;
+            font-size: 11px;
+            background: var(--input-bg);
+            border: 1px solid var(--border);
+        }
+
+        .seed-row button:hover {
+            border-color: var(--accent);
+        }
+
+        /* Buttons */
+        button {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        button:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: var(--input-bg);
+            border: 1px solid var(--accent);
+        }
+
+        .button-row {
+            display: flex;
+            gap: 8px;
+        }
+
+        .button-row button {
+            flex: 1;
+        }
+
+        /* Direction Grid */
+        .direction-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 4px;
+            max-width: 120px;
+        }
+
+        .dir-cell {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            aspect-ratio: 1;
+            background: var(--input-bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.15s;
+            position: relative;
+        }
+
+        .dir-cell input[type="checkbox"] {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+            margin: 0;
+        }
+
+        .dir-cell:hover {
+            border-color: var(--accent);
+        }
+
+        .dir-cell:has(input:checked) {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .dir-cell:has(input:checked) span {
+            color: white;
+        }
+
+        .dir-cell span {
+            color: var(--text-muted);
+            pointer-events: none;
+        }
+
+        .dir-center {
+            background: transparent;
+            border: 1px dashed var(--border);
+            cursor: default;
+        }
+
+        /* Status */
+        .generation-status {
+            background: var(--section-bg);
+            border: 1px solid var(--accent);
+            border-radius: 6px;
+            padding: 10px 12px;
+            text-align: center;
+        }
+
+        .generation-status.hidden {
+            display: none;
+        }
+
+        .generation-status .status-text {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .generation-status .status-detail {
+            font-size: 10px;
+            color: var(--text-muted);
+            margin-top: 3px;
+        }
+
+        .generation-status.success {
+            border-color: #2ecc71;
+        }
+
+        .generation-status.success .status-text {
+            color: #2ecc71;
+        }
+
+        .generation-status.warning {
+            border-color: #f39c12;
+        }
+
+        .generation-status.warning .status-text {
+            color: #f39c12;
+        }
+
+        /* Word List */
+        #wordList {
+            margin-top: auto;
+            padding-top: 12px;
+        }
+
+        #wordList h3 {
+            margin: 0 0 6px 0;
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        #wordListContent {
+            font-size: 11px;
+            color: var(--text);
+            line-height: 1.5;
+            max-height: 120px;
+            overflow-y: auto;
+        }
+
+        #wordListContent .word-item {
+            display: inline-block;
+            margin-right: 6px;
+            margin-bottom: 4px;
+            padding: 2px 6px;
+            background: var(--input-bg);
+            border-radius: 3px;
+            font-family: monospace;
+        }
+
+        #wordListContent .word-item.placed {
+            background: #1e5128;
+        }
+
+        #wordListContent .word-item.not-placed {
+            background: #5c2626;
+        }
+
+        .info {
+            font-size: 10px;
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        /* Grid Area */
+        #gridArea {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            overflow: auto;
+        }
+
+        #gridContainer {
+            display: inline-block;
+        }
+
+        #grid {
+            display: grid;
+            gap: 2px;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .cell {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: transparent;
+            text-transform: uppercase;
+            user-select: none;
+        }
+
+        /* Responsive */
+        @media (max-width: 700px) {
+            #app {
+                flex-direction: column;
+            }
+
+            #panel {
+                width: 100%;
+                min-width: auto;
+                max-height: 50vh;
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+            }
+
+            #app.panel-collapsed #panel {
+                max-height: 0;
+            }
+
+            #panelToggle {
+                left: 50%;
+                top: auto;
+                bottom: calc(50vh);
+                transform: translateX(-50%);
+                width: 60px;
+                height: 24px;
+                border-radius: 0 0 6px 6px;
+                border-top: none;
+                border-left: 1px solid var(--border);
+            }
+
+            #panelToggle::after {
+                content: '▲';
+                font-size: 10px;
+            }
+
+            #app.panel-collapsed #panelToggle {
+                bottom: auto;
+                top: 0;
+            }
+
+            #app.panel-collapsed #panelToggle::after {
+                content: '▼';
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <div id="panel">
+            <div id="panelContent">
+                <h2>Word Search Generator</h2>
+
+                <!-- Words Section - Always visible -->
+                <div class="form-group">
+                    <label for="words">Words (one per line)</label>
+                    <textarea id="words" placeholder="SUNS&#10;KAKIS&#10;ZIRGS&#10;VISTA"></textarea>
+                </div>
+
+                <!-- Grid Section -->
+                <div class="section">
+                    <div class="section-header" onclick="toggleSection(this)">
+                        <span class="section-title">Grid Size</span>
+                        <span class="section-toggle">▼</span>
+                    </div>
+                    <div class="section-content">
+                        <div class="row">
+                            <div class="form-group">
+                                <label for="width">Width</label>
+                                <input type="number" id="width" value="15" min="5" max="30">
+                            </div>
+                            <div class="form-group">
+                                <label for="height">Height</label>
+                                <input type="number" id="height" value="15" min="5" max="30">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Seed Section -->
+                <div class="section collapsed">
+                    <div class="section-header" onclick="toggleSection(this)">
+                        <span class="section-title">Seed</span>
+                        <span class="section-toggle">▼</span>
+                    </div>
+                    <div class="section-content">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="useSpecificSeed">
+                            <label for="useSpecificSeed">Use specific seed</label>
+                        </div>
+                        <div class="form-group">
+                            <label for="seed">Last seed</label>
+                            <div class="seed-row">
+                                <input type="text" id="seed" placeholder="Generated after first run" disabled>
+                                <button type="button" id="btnCopySeed" title="Copy seed">Copy</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Word Placement Section -->
+                <div class="section collapsed">
+                    <div class="section-header" onclick="toggleSection(this)">
+                        <span class="section-title">Word Placement</span>
+                        <span class="section-toggle">▼</span>
+                    </div>
+                    <div class="section-content">
+                        <div class="form-group">
+                            <label for="alphabet">Fill Alphabet</label>
+                            <select id="alphabet">
+                                <option value="latvian">Latvian</option>
+                                <option value="english">English (A-Z)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Directions</label>
+                            <div class="direction-grid">
+                                <label class="dir-cell" title="Up-Left">
+                                    <input type="checkbox" id="dirUpLeft" checked>
+                                    <span>↖</span>
+                                </label>
+                                <label class="dir-cell" title="Up">
+                                    <input type="checkbox" id="dirUp" checked>
+                                    <span>↑</span>
+                                </label>
+                                <label class="dir-cell" title="Up-Right">
+                                    <input type="checkbox" id="dirUpRight" checked>
+                                    <span>↗</span>
+                                </label>
+                                <label class="dir-cell" title="Left">
+                                    <input type="checkbox" id="dirLeft" checked>
+                                    <span>←</span>
+                                </label>
+                                <div class="dir-cell dir-center"></div>
+                                <label class="dir-cell" title="Right">
+                                    <input type="checkbox" id="dirRight" checked>
+                                    <span>→</span>
+                                </label>
+                                <label class="dir-cell" title="Down-Left">
+                                    <input type="checkbox" id="dirDownLeft" checked>
+                                    <span>↙</span>
+                                </label>
+                                <label class="dir-cell" title="Down">
+                                    <input type="checkbox" id="dirDown" checked>
+                                    <span>↓</span>
+                                </label>
+                                <label class="dir-cell" title="Down-Right">
+                                    <input type="checkbox" id="dirDownRight" checked>
+                                    <span>↘</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Styling Section -->
+                <div class="section collapsed">
+                    <div class="section-header" onclick="toggleSection(this)">
+                        <span class="section-title">Styling</span>
+                        <span class="section-toggle">▼</span>
+                    </div>
+                    <div class="section-content">
+                        <div class="form-group">
+                            <label for="fontFamily">Font</label>
+                            <select id="fontFamily">
+                                <option value="'Consolas', 'Courier New', monospace">Consolas</option>
+                                <option value="'Courier New', monospace">Courier New</option>
+                                <option value="'Arial', sans-serif">Arial</option>
+                                <option value="'Georgia', serif">Georgia</option>
+                                <option value="'Times New Roman', serif">Times New Roman</option>
+                                <option value="'Verdana', sans-serif">Verdana</option>
+                            </select>
+                        </div>
+                        <div class="row">
+                            <div class="form-group">
+                                <label for="fontSize">Font Size</label>
+                                <input type="number" id="fontSize" value="20" min="10" max="48">
+                            </div>
+                            <div class="form-group">
+                                <label for="spacing">Spacing</label>
+                                <input type="number" id="spacing" value="2" min="0" max="20">
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="form-group">
+                                <label for="textColor">Text</label>
+                                <input type="color" id="textColor" value="#eeeeee">
+                            </div>
+                            <div class="form-group">
+                                <label for="highlightColor">Highlight</label>
+                                <input type="color" id="highlightColor" value="#e94560">
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="form-group">
+                                <label for="bgColor">Background</label>
+                                <input type="color" id="bgColor" value="#1a1a2e">
+                            </div>
+                            <div class="form-group" style="justify-content: flex-end;">
+                                <div class="checkbox-group">
+                                    <input type="checkbox" id="transparentBg" checked>
+                                    <label for="transparentBg">Transparent</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Output Options -->
+                <div class="checkbox-group">
+                    <input type="checkbox" id="showSolution">
+                    <label for="showSolution">Show solution</label>
+                </div>
+
+                <div class="button-row">
+                    <button id="btnGenerate">Generate</button>
+                    <button id="btnSave" class="btn-secondary">Save PNG</button>
+                </div>
+
+                <div id="generationStatus" class="generation-status hidden">
+                    <div class="status-text">Generating...</div>
+                    <div class="status-detail"></div>
+                </div>
+
+                <div id="wordList">
+                    <h3>Words</h3>
+                    <div id="wordListContent">
+                        <span class="info">Generate a puzzle to see word list</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <button id="panelToggle" title="Toggle panel"></button>
+
+        <div id="gridArea">
+            <div id="gridContainer">
+                <div id="grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Alphabets for random fill
+        const LATVIAN_ALPHABET = 'AĀBCČDEĒFGĢHIĪJKĶLĻMNŅOPRSŠTUŪVZŽ';
+        const ENGLISH_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+        let grid = [];
+        let gridWidth = 15;
+        let gridHeight = 15;
+        let solutionCells = new Set();
+        let placedWords = [];
+        let notPlacedWords = [];
+        let currentSeed = '';
+
+        // Seeded PRNG (Mulberry32)
+        function mulberry32(seed) {
+            return function() {
+                let t = seed += 0x6D2B79F5;
+                t = Math.imul(t ^ t >>> 15, t | 1);
+                t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+                return ((t ^ t >>> 14) >>> 0) / 4294967296;
+            };
+        }
+
+        let rng = Math.random;
+
+        function hashString(str) {
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) {
+                const char = str.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash;
+            }
+            return Math.abs(hash);
+        }
+
+        function generateSeed() {
+            return Math.random().toString(36).substring(2, 10).toUpperCase();
+        }
+
+        function initRng() {
+            let seed;
+            if (DOM.useSpecificSeed.checked && DOM.seed.value.trim()) {
+                seed = DOM.seed.value.trim();
+            } else {
+                seed = generateSeed();
+            }
+            currentSeed = seed;
+            DOM.seed.value = seed;
+            rng = mulberry32(hashString(seed));
+        }
+
+        function updateSeedFieldState() {
+            const useSpecific = DOM.useSpecificSeed.checked;
+            DOM.seed.disabled = !useSpecific;
+            DOM.seed.placeholder = useSpecific ? 'Enter seed' : 'Auto-generated';
+        }
+
+        const DOM = {
+            words: document.getElementById('words'),
+            width: document.getElementById('width'),
+            height: document.getElementById('height'),
+            seed: document.getElementById('seed'),
+            useSpecificSeed: document.getElementById('useSpecificSeed'),
+            btnCopySeed: document.getElementById('btnCopySeed'),
+            showSolution: document.getElementById('showSolution'),
+            alphabet: document.getElementById('alphabet'),
+            dirRight: document.getElementById('dirRight'),
+            dirLeft: document.getElementById('dirLeft'),
+            dirDown: document.getElementById('dirDown'),
+            dirUp: document.getElementById('dirUp'),
+            dirDownRight: document.getElementById('dirDownRight'),
+            dirDownLeft: document.getElementById('dirDownLeft'),
+            dirUpRight: document.getElementById('dirUpRight'),
+            dirUpLeft: document.getElementById('dirUpLeft'),
+            fontFamily: document.getElementById('fontFamily'),
+            fontSize: document.getElementById('fontSize'),
+            spacing: document.getElementById('spacing'),
+            textColor: document.getElementById('textColor'),
+            highlightColor: document.getElementById('highlightColor'),
+            bgColor: document.getElementById('bgColor'),
+            transparentBg: document.getElementById('transparentBg'),
+            btnGenerate: document.getElementById('btnGenerate'),
+            btnSave: document.getElementById('btnSave'),
+            grid: document.getElementById('grid'),
+            gridContainer: document.getElementById('gridContainer'),
+            wordListContent: document.getElementById('wordListContent'),
+            generationStatus: document.getElementById('generationStatus'),
+            statusText: document.querySelector('#generationStatus .status-text'),
+            statusDetail: document.querySelector('#generationStatus .status-detail'),
+            panelToggle: document.getElementById('panelToggle'),
+            app: document.getElementById('app')
+        };
+
+        // Direction mappings: [dx, dy]
+        const DIRECTION_MAP = {
+            dirRight: [1, 0],
+            dirLeft: [-1, 0],
+            dirDown: [0, 1],
+            dirUp: [0, -1],
+            dirDownRight: [1, 1],
+            dirDownLeft: [-1, 1],
+            dirUpRight: [1, -1],
+            dirUpLeft: [-1, -1]
+        };
+
+        // UI Functions
+        function toggleSection(header) {
+            header.parentElement.classList.toggle('collapsed');
+        }
+
+        function togglePanel() {
+            DOM.app.classList.toggle('panel-collapsed');
+        }
+
+        function getRandomLetter() {
+            const alphabet = DOM.alphabet.value === 'latvian' ? LATVIAN_ALPHABET : ENGLISH_ALPHABET;
+            return alphabet[Math.floor(rng() * alphabet.length)];
+        }
+
+        function getAllowedDirections() {
+            const dirs = [];
+            for (const [key, direction] of Object.entries(DIRECTION_MAP)) {
+                if (DOM[key].checked) {
+                    dirs.push(direction);
+                }
+            }
+            return dirs;
+        }
+
+        function normalizeWord(word) {
+            return word.trim().toUpperCase().replace(/\s+/g, '');
+        }
+
+        function createEmptyGrid(w, h) {
+            const g = [];
+            for (let y = 0; y < h; y++) {
+                g[y] = [];
+                for (let x = 0; x < w; x++) {
+                    g[y][x] = null;
+                }
+            }
+            return g;
+        }
+
+        function canPlaceWord(grid, word, startX, startY, dx, dy) {
+            const w = grid[0].length;
+            const h = grid.length;
+
+            for (let i = 0; i < word.length; i++) {
+                const x = startX + i * dx;
+                const y = startY + i * dy;
+
+                if (x < 0 || x >= w || y < 0 || y >= h) {
+                    return false;
+                }
+
+                const cell = grid[y][x];
+                if (cell !== null && cell !== word[i]) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        function placeWord(grid, word, startX, startY, dx, dy) {
+            const positions = [];
+            for (let i = 0; i < word.length; i++) {
+                const x = startX + i * dx;
+                const y = startY + i * dy;
+                grid[y][x] = word[i];
+                positions.push({ x, y });
+            }
+            return positions;
+        }
+
+        function tryPlaceWord(grid, word, directions, maxAttempts = 100) {
+            if (directions.length === 0) return null;
+
+            const w = grid[0].length;
+            const h = grid.length;
+
+            for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                const dir = directions[Math.floor(rng() * directions.length)];
+                const dx = dir[0];
+                const dy = dir[1];
+
+                const startX = Math.floor(rng() * w);
+                const startY = Math.floor(rng() * h);
+
+                if (canPlaceWord(grid, word, startX, startY, dx, dy)) {
+                    return placeWord(grid, word, startX, startY, dx, dy);
+                }
+            }
+            return null;
+        }
+
+        function fillEmptyCells(grid) {
+            for (let y = 0; y < grid.length; y++) {
+                for (let x = 0; x < grid[y].length; x++) {
+                    if (grid[y][x] === null) {
+                        grid[y][x] = getRandomLetter();
+                    }
+                }
+            }
+        }
+
+        // All 8 directions for checking accidental words
+        const CHECK_DIRECTIONS = [
+            [1, 0], [0, 1], [1, 1], [-1, 1],
+            [-1, 0], [0, -1], [-1, -1], [1, -1]
+        ];
+
+        function findAccidentalWords(grid, words, solutionCells) {
+            const found = [];
+            const h = grid.length;
+            const w = grid[0].length;
+
+            for (const word of words) {
+                if (word.length < 2) continue;
+
+                for (let y = 0; y < h; y++) {
+                    for (let x = 0; x < w; x++) {
+                        for (const [dx, dy] of CHECK_DIRECTIONS) {
+                            let match = true;
+                            const positions = [];
+
+                            for (let i = 0; i < word.length; i++) {
+                                const nx = x + i * dx;
+                                const ny = y + i * dy;
+
+                                if (nx < 0 || nx >= w || ny < 0 || ny >= h) {
+                                    match = false;
+                                    break;
+                                }
+
+                                if (grid[ny][nx] !== word[i]) {
+                                    match = false;
+                                    break;
+                                }
+
+                                positions.push(`${nx},${ny}`);
+                            }
+
+                            if (match) {
+                                const isIntentional = positions.every(pos => solutionCells.has(pos));
+                                if (!isIntentional) {
+                                    found.push({ word, x, y, dx, dy });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            return found;
+        }
+
+        function updateStatus(text, detail, type = '') {
+            DOM.generationStatus.className = 'generation-status' + (type ? ' ' + type : '');
+            DOM.statusText.textContent = text;
+            DOM.statusDetail.textContent = detail;
+        }
+
+        function showStatus() {
+            DOM.generationStatus.classList.remove('hidden');
+        }
+
+        function hideStatus() {
+            DOM.generationStatus.classList.add('hidden');
+        }
+
+        let isGenerating = false;
+
+        async function generatePuzzle() {
+            if (isGenerating) return;
+            isGenerating = true;
+            DOM.btnGenerate.disabled = true;
+            DOM.btnGenerate.textContent = 'Generating...';
+
+            // Initialize RNG with seed
+            initRng();
+
+            gridWidth = parseInt(DOM.width.value) || 15;
+            gridHeight = parseInt(DOM.height.value) || 15;
+
+            gridWidth = Math.max(5, Math.min(30, gridWidth));
+            gridHeight = Math.max(5, Math.min(30, gridHeight));
+
+            const wordsText = DOM.words.value;
+            const words = wordsText
+                .split('\n')
+                .map(normalizeWord)
+                .filter(w => w.length > 0)
+                .sort((a, b) => b.length - a.length);
+
+            const directions = getAllowedDirections();
+
+            const MAX_ATTEMPTS = 100;
+            let attempt = 0;
+            let accidentalWords = [];
+
+            showStatus();
+            updateStatus('Generating...', `Seed: ${currentSeed}`);
+
+            await new Promise(r => setTimeout(r, 10));
+
+            let generationSuccess = false;
+
+            do {
+                attempt++;
+                updateStatus('Generating...', `Attempt ${attempt}/${MAX_ATTEMPTS} • Seed: ${currentSeed}`);
+
+                if (attempt % 5 === 0) {
+                    await new Promise(r => setTimeout(r, 0));
+                }
+
+                grid = createEmptyGrid(gridWidth, gridHeight);
+                solutionCells = new Set();
+                placedWords = [];
+                notPlacedWords = [];
+
+                for (const word of words) {
+                    if (word.length > Math.max(gridWidth, gridHeight)) {
+                        notPlacedWords.push(word);
+                        continue;
+                    }
+
+                    const positions = tryPlaceWord(grid, word, directions);
+                    if (positions) {
+                        placedWords.push(word);
+                        for (const pos of positions) {
+                            solutionCells.add(`${pos.x},${pos.y}`);
+                        }
+                    } else {
+                        notPlacedWords.push(word);
+                    }
+                }
+
+                if (notPlacedWords.length > 0 && attempt < MAX_ATTEMPTS) {
+                    updateStatus('Regenerating...', `Could not place "${notPlacedWords[0]}" (attempt ${attempt})`);
+                    continue;
+                }
+
+                fillEmptyCells(grid);
+
+                accidentalWords = findAccidentalWords(grid, words, solutionCells);
+
+                if (accidentalWords.length > 0 && attempt < MAX_ATTEMPTS) {
+                    updateStatus('Regenerating...', `Found "${accidentalWords[0].word}" in random letters (attempt ${attempt})`);
+                    continue;
+                }
+
+                if (notPlacedWords.length === 0 && accidentalWords.length === 0) {
+                    generationSuccess = true;
+                }
+
+            } while (!generationSuccess && attempt < MAX_ATTEMPTS);
+
+            if (generationSuccess) {
+                updateStatus('Complete!', `${attempt} attempt${attempt > 1 ? 's' : ''} • Seed: ${currentSeed}`, 'success');
+            } else if (notPlacedWords.length > 0) {
+                updateStatus('Warning', `Missing ${notPlacedWords.length} word(s) • Seed: ${currentSeed}`, 'warning');
+            } else {
+                updateStatus('Warning', `Accidental words remain • Seed: ${currentSeed}`, 'warning');
+            }
+
+            setTimeout(() => {
+                hideStatus();
+            }, 4000);
+
+            renderGrid();
+            renderWordList();
+
+            isGenerating = false;
+            DOM.btnGenerate.disabled = false;
+            DOM.btnGenerate.textContent = 'Generate';
+        }
+
+        function renderGrid() {
+            const fontSize = parseInt(DOM.fontSize.value) || 20;
+            const spacing = parseInt(DOM.spacing.value) || 2;
+            const fontFamily = DOM.fontFamily.value;
+            const textColor = DOM.textColor.value;
+            const highlightColor = DOM.highlightColor.value;
+            const bgColor = DOM.bgColor.value;
+            const transparentBg = DOM.transparentBg.checked;
+            const showSolution = DOM.showSolution.checked;
+
+            const cellSize = Math.round(fontSize * 1.6);
+
+            DOM.grid.innerHTML = '';
+            DOM.grid.style.gridTemplateColumns = `repeat(${gridWidth}, ${cellSize}px)`;
+            DOM.grid.style.gap = `${spacing}px`;
+            DOM.grid.style.fontFamily = fontFamily;
+            DOM.grid.style.fontSize = `${fontSize}px`;
+            DOM.grid.style.color = textColor;
+            DOM.gridContainer.style.background = transparentBg ? 'transparent' : bgColor;
+            DOM.gridContainer.style.padding = transparentBg ? '0' : '10px';
+            DOM.gridContainer.style.borderRadius = transparentBg ? '0' : '8px';
+
+            for (let y = 0; y < gridHeight; y++) {
+                for (let x = 0; x < gridWidth; x++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.style.width = `${cellSize}px`;
+                    cell.style.height = `${cellSize}px`;
+                    cell.textContent = grid[y][x];
+
+                    if (showSolution && solutionCells.has(`${x},${y}`)) {
+                        cell.style.color = highlightColor;
+                    }
+
+                    DOM.grid.appendChild(cell);
+                }
+            }
+        }
+
+        function renderWordList() {
+            if (placedWords.length === 0 && notPlacedWords.length === 0) {
+                DOM.wordListContent.innerHTML = '<span class="info">Generate a puzzle to see word list</span>';
+                return;
+            }
+
+            let html = '';
+            for (const word of placedWords) {
+                html += `<span class="word-item placed">${word}</span>`;
+            }
+            for (const word of notPlacedWords) {
+                html += `<span class="word-item not-placed">${word}</span>`;
+            }
+            DOM.wordListContent.innerHTML = html;
+        }
+
+        function savePNG() {
+            if (grid.length === 0) {
+                alert('Generate a puzzle first!');
+                return;
+            }
+
+            const fontSize = parseInt(DOM.fontSize.value) || 20;
+            const spacing = parseInt(DOM.spacing.value) || 2;
+            const fontFamily = DOM.fontFamily.value;
+            const textColor = DOM.textColor.value;
+            const highlightColor = DOM.highlightColor.value;
+            const bgColor = DOM.bgColor.value;
+            const transparentBg = DOM.transparentBg.checked;
+            const showSolution = DOM.showSolution.checked;
+
+            const cellSize = Math.round(fontSize * 1.6);
+            const gap = spacing;
+            const padding = 10;
+
+            const canvasWidth = gridWidth * cellSize + (gridWidth - 1) * gap + padding * 2;
+            const canvasHeight = gridHeight * cellSize + (gridHeight - 1) * gap + padding * 2;
+
+            const canvas = document.createElement('canvas');
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+
+            const ctx = canvas.getContext('2d');
+
+            if (transparentBg) {
+                ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+            } else {
+                ctx.fillStyle = bgColor;
+                ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+            }
+
+            ctx.font = `bold ${fontSize}px ${fontFamily}`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            for (let y = 0; y < gridHeight; y++) {
+                for (let x = 0; x < gridWidth; x++) {
+                    const px = padding + x * (cellSize + gap) + cellSize / 2;
+                    const py = padding + y * (cellSize + gap) + cellSize / 2;
+
+                    if (showSolution && solutionCells.has(`${x},${y}`)) {
+                        ctx.fillStyle = highlightColor;
+                    } else {
+                        ctx.fillStyle = textColor;
+                    }
+
+                    ctx.fillText(grid[y][x], px, py);
+                }
+            }
+
+            const link = document.createElement('a');
+            link.download = `word-search-${currentSeed}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+
+        // Event listeners
+        DOM.btnGenerate.addEventListener('click', generatePuzzle);
+        DOM.btnSave.addEventListener('click', savePNG);
+        DOM.useSpecificSeed.addEventListener('change', updateSeedFieldState);
+        DOM.btnCopySeed.addEventListener('click', () => {
+            if (currentSeed) {
+                navigator.clipboard.writeText(currentSeed);
+                DOM.btnCopySeed.textContent = 'Copied!';
+                setTimeout(() => DOM.btnCopySeed.textContent = 'Copy', 1500);
+            }
+        });
+        DOM.showSolution.addEventListener('change', renderGrid);
+        DOM.panelToggle.addEventListener('click', togglePanel);
+
+        // Styling controls
+        DOM.fontFamily.addEventListener('change', renderGrid);
+        DOM.fontSize.addEventListener('input', renderGrid);
+        DOM.spacing.addEventListener('input', renderGrid);
+        DOM.textColor.addEventListener('input', renderGrid);
+        DOM.highlightColor.addEventListener('input', renderGrid);
+        DOM.bgColor.addEventListener('input', renderGrid);
+        DOM.transparentBg.addEventListener('change', renderGrid);
+
+        // Initial setup
+        updateSeedFieldState();
+        DOM.words.value = 'SUNS\nKAKIS\nZIRGS\nVISTA\nGOVS\nCUKA\nAITA\nZIVS';
+        generatePuzzle();
+    </script>
+</body>
+
+</html>

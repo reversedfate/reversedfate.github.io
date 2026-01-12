@@ -1,0 +1,75 @@
+/* Creature styles for D&D Battle Simulator */
+@import '../variables.css';
+
+.creature {
+    fill: #666;
+    cursor: pointer;
+}
+
+.creature-group {
+    cursor: pointer;
+}
+
+.creature.wounded {
+    fill: #e9a23b;
+}
+
+.creature.dead {
+    fill: #c8c8c8;
+    opacity: 0.5;
+}
+
+.creature.active-creature circle {
+    stroke: white;
+    stroke-width: 2;
+    stroke-dasharray: 5, 3;
+    animation: rotate 2s linear infinite;
+}
+
+@keyframes rotate {
+    to {
+        stroke-dashoffset: -8;
+    }
+}
+
+.label {
+    font-size: 9px;
+    text-anchor: middle;
+    dominant-baseline: middle;
+    pointer-events: none;
+    fill: #000;
+}
+
+/* Animation classes */
+@keyframes moveTo {
+    from {
+        transform: translate(0, 0);
+    }
+    to {
+        transform: translate(var(--end-x), var(--end-y));
+    }
+}
+
+.moving {
+    animation: moveTo 0.5s ease-in-out forwards;
+}
+
+@keyframes attackSlash {
+    0% {
+        transform: scale(1);
+        opacity: 0;
+    }
+    50% {
+        transform: scale(1.5);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 0;
+    }
+}
+
+.attack-effect {
+    animation: attackSlash 0.4s ease-out forwards;
+    pointer-events: none;
+}

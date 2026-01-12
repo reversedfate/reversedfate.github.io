@@ -1,0 +1,152 @@
+/* Drawer styles for D&D Battle Simulator */
+@import '../variables.css';
+
+/* Default drawer styles (desktop & large screens) */
+#settingsDrawer,
+#inspectDrawer,
+#logDrawer,
+#importDrawer,
+#combatDrawer,
+#diceRollerDrawer {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: var(--drawer-width);
+    background: var(--dark-background);
+    color: var(--text-color);
+    border-left: 2px solid #888;
+    box-shadow: -2px 0 8px rgba(0, 0, 0, 0.4);
+    padding: 10px;
+    overflow-y: auto;
+    z-index: 999;
+    transform: translateX(100%);
+    transition: transform 0.3s ease;
+    background: var(--dark-background);
+    padding: 16px 12px;
+}
+
+#settingsDrawer.open,
+#inspectDrawer.open,
+#importDrawer.open,
+#combatDrawer.open,
+#logDrawer.open,
+#diceRollerDrawer.open {
+    transform: translateX(0);
+}
+
+#help {
+    font-size: var(--font-xs);
+    background: #eef;
+    border-bottom: 2px solid var(--border-color);
+    padding: var(--spacing-xs);
+    color: #333;
+}
+
+#help summary {
+    cursor: pointer;
+    font-weight: 700;
+}
+
+#help ul {
+    margin: 4px 0 0 18px;
+    padding: 0;
+}
+
+#statsPanel {
+    font-size: var(--font-xs);
+    padding: var(--spacing-sm);
+}
+
+/* Mobile styles */
+@media (max-width: 480px) {
+    #settingsDrawer,
+    #logDrawer,
+    #importDrawer,
+    #combatDrawer,
+    #inspectDrawer,
+    #diceRollerDrawer {
+        left: 0;
+        right: auto;
+        width: 100vw;
+        max-width: 100vw;
+        top: 48px;
+        height: calc(100vh - 48px);
+        max-height: calc(100vh - 48px);
+        border-left: none;
+        border-top: 2px solid #888;
+        transform: translateX(100%);
+        transition: transform 0.3s ease;
+    }
+
+    #settingsDrawer.open,
+    #inspectDrawer.open,
+    #importDrawer.open,
+    #combatDrawer.open,
+    #logDrawer.open,
+    #diceRollerDrawer.open {
+        transform: translateX(0);
+    }
+
+    .drawer-open #fabControls {
+        right: 0 !important;
+    }
+}
+
+/* Drawer scrollbar styles */
+#settingsDrawer::-webkit-scrollbar,
+#inspectDrawer::-webkit-scrollbar,
+#importDrawer::-webkit-scrollbar,
+#combatDrawer::-webkit-scrollbar,
+#logDrawer::-webkit-scrollbar,
+#diceRollerDrawer::-webkit-scrollbar {
+    width: 6px;
+}
+
+#settingsDrawer::-webkit-scrollbar-thumb,
+#inspectDrawer::-webkit-scrollbar-thumb,
+#importDrawer::-webkit-scrollbar-thumb,
+#combatDrawer::-webkit-scrollbar-thumb,
+#logDrawer::-webkit-scrollbar-thumb,
+#diceRollerDrawer::-webkit-scrollbar-thumb {
+    background-color: #aaa;
+}
+
+#settingsDrawer::-webkit-scrollbar-track,
+#inspectDrawer::-webkit-scrollbar-track,
+#importDrawer::-webkit-scrollbar-track,
+#combatDrawer::-webkit-scrollbar-track,
+#logDrawer::-webkit-scrollbar-track,
+#diceRollerDrawer::-webkit-scrollbar-track {
+    background-color: #222;
+}
+
+/* Specific drawer content styles */
+#logContainer {
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+}
+
+.log-entry {
+    margin: 5px 0;
+    padding: 5px;
+    border-bottom: 1px solid #444;
+}
+
+.log-warning {
+    color: #f39c12;
+}
+
+.log-critical {
+    color: #e74c3c;
+    font-weight: bold;
+}
+
+.log-victory {
+    color: #2ecc71;
+    font-weight: bold;
+}
+
+.log-info {
+    color: #3498db;
+}

@@ -1,0 +1,103 @@
+/* Miscellaneous styles for D&D Battle Simulator */
+@import '../variables.css';
+
+/* Timer display */
+#timerDisplay {
+    position: fixed;
+    bottom: 10px;
+    left: 10px;
+    font-weight: bold;
+    background: rgba(0, 0, 0, 0.6);
+    color: white;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: var(--font-md);
+    z-index: 1001;
+}
+
+/* Tooltips */
+.dice-tooltip {
+    position: relative;
+    display: inline-block;
+    cursor: help;
+    font-weight: bold;
+    border-bottom: 1px dotted #fff;
+}
+
+.dice-tooltip .tooltip-text {
+    visibility: hidden;
+    width: 200px;
+    background-color: #555;
+    color: #fff;
+    text-align: center;
+    border-radius: 6px;
+    padding: 5px;
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    transform: translateX(-50%);
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.dice-tooltip:hover .tooltip-text {
+    visibility: visible;
+    opacity: 1;
+}
+
+/* Details and summary */
+details {
+    border-bottom: 1px solid #ccc;
+    background: #f2f2f2;
+    margin: 0;
+}
+
+details[open] {
+    background: #e9e9e9;
+}
+
+details > summary {
+    padding: 10px;
+    font-size: 16px;
+    background: #ddd;
+    cursor: pointer;
+    font-weight: bold;
+    user-select: none;
+}
+
+details > summary::marker {
+    font-size: 20px;
+    color: #555;
+}
+
+/* Mobile adjustments */
+@media (max-width: 480px) {
+    #fabControls {
+        flex-direction: row;
+        top: 0;
+        left: 0;
+        right: 0;
+        justify-content: space-around;
+        background: #222;
+        padding: 4px 0;
+        z-index: 1001;
+    }
+
+    #fabControls .label {
+        display: none;
+    }
+
+    #fabControls button {
+        flex-direction: column;
+        font-size: var(--font-sm);
+        padding: 6px 8px;
+    }
+    
+    #timerDisplay {
+        bottom: 5px;
+        left: 5px;
+        font-size: var(--font-sm);
+        padding: 4px 8px;
+    }
+}

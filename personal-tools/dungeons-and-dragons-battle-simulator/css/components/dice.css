@@ -1,0 +1,126 @@
+/* Dice roller styles for D&D Battle Simulator */
+@import '../variables.css';
+
+.dice-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+    gap: 8px;
+}
+
+.dice-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 6px;
+    font-weight: bold;
+    font-size: 16px;
+    cursor: pointer;
+    background-color: #444;
+    color: white;
+    border: none;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.dice-btn:hover {
+    background-color: #555;
+}
+
+.dice-btn:active {
+    transform: translateY(1px);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+.dice-btn[data-dice="d4"] { background-color: #e74c3c; }
+.dice-btn[data-dice="d6"] { background-color: #3498db; }
+.dice-btn[data-dice="d8"] { background-color: #2ecc71; }
+.dice-btn[data-dice="d10"] { background-color: #f39c12; }
+.dice-btn[data-dice="d12"] { background-color: #9b59b6; }
+.dice-btn[data-dice="d20"] { background-color: #1abc9c; }
+.dice-btn[data-dice="d100"] { background-color: #34495e; }
+
+.dice-row input[type="number"] {
+    width: 50px;
+    padding: 5px;
+    border-radius: 4px;
+    border: 1px solid #555;
+    background-color: #333;
+    color: white;
+}
+
+.dice-plus {
+    font-weight: bold;
+    font-size: 18px;
+}
+
+.advantage-row {
+    display: flex;
+    gap: 15px;
+    margin: 15px 0;
+}
+
+.advantage-row label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.custom-roll {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.custom-roll input {
+    flex: 1;
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid #555;
+    background-color: #333;
+    color: white;
+}
+
+#diceResults {
+    margin-top: 20px;
+    border-top: 1px solid #555;
+    padding-top: 15px;
+}
+
+.roll-result {
+    margin-bottom: 10px;
+    padding: 10px;
+    background-color: #444;
+    border-radius: 4px;
+    border-left: 4px solid #3498db;
+}
+
+.roll-formula {
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.roll-detail {
+    font-size: 0.9em;
+    color: #ccc;
+}
+
+.roll-total {
+    font-size: 1.2em;
+    font-weight: bold;
+    margin-top: 5px;
+}
+
+.roll-critical {
+    border-left-color: #e74c3c;
+}
+
+.roll-critical .roll-total {
+    color: #e74c3c;
+}
+
+.roll-advantage {
+    border-left-color: #2ecc71;
+}
+
+.roll-disadvantage {
+    border-left-color: #f39c12;
+}

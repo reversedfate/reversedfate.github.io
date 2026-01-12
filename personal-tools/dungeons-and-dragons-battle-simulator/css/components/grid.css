@@ -1,0 +1,58 @@
+/* Grid styles for D&D Battle Simulator */
+@import '../variables.css';
+
+#arena svg {
+    cursor: grab;
+}
+
+.map-dragging #arena svg {
+    cursor: grabbing;
+}
+
+.grid-cell {
+    fill: none;
+    stroke: #ccc;
+    stroke-width: 0.5;
+}
+
+.grid-cell:hover {
+    fill: rgba(255, 255, 255, 0.1);
+}
+
+.grid-highlight {
+    fill: rgba(255, 255, 0, 0.3);
+    stroke: rgba(255, 255, 0, 0.6);
+    stroke-width: 1;
+    pointer-events: none;
+}
+
+.range-indicator {
+    fill-opacity: 0.2;
+    stroke-width: 1;
+    pointer-events: none;
+}
+
+.movement-range {
+    fill: rgba(0, 200, 0, 0.15);
+    stroke: rgba(0, 200, 0, 0.4);
+}
+
+.attack-range {
+    fill: rgba(200, 0, 0, 0.15);
+    stroke: rgba(200, 0, 0, 0.4);
+}
+
+.path-segment {
+    stroke: rgba(0, 0, 200, 0.6);
+    stroke-width: 2;
+    fill: none;
+    stroke-dasharray: 5, 5;
+    pointer-events: none;
+    animation: dash 1s linear infinite;
+}
+
+@keyframes dash {
+    to {
+        stroke-dashoffset: -10;
+    }
+}

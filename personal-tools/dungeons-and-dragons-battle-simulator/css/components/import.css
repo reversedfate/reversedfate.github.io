@@ -1,0 +1,58 @@
+/* Import panel styles for D&D Battle Simulator */
+@import '../variables.css';
+
+/* Creature Selection */
+#creatureSearch {
+    width: 100%;
+    padding: 8px;
+    margin-bottom: 10px;
+    border-radius: var(--border-radius-sm);
+    border: 1px solid #555;
+    background: #444;
+    color: #fff;
+}
+
+#creatureList {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #555;
+    background: #222;
+    margin-bottom: 10px;
+}
+
+.creature-item {
+    padding: 8px;
+    cursor: pointer;
+    border-bottom: 1px solid #444;
+}
+
+.creature-item:hover {
+    background: #444;
+}
+
+.creature-item.selected {
+    background: #555;
+}
+
+.creature-name {
+    font-weight: bold;
+}
+
+.creature-type {
+    font-size: var(--font-xs);
+    color: #ccc;
+    margin-top: 2px;
+}
+
+.creature-stats {
+    font-size: var(--font-xs);
+    color: #aaa;
+    margin-top: 4px;
+}
+
+.no-results {
+    padding: 8px;
+    color: #999;
+    font-style: italic;
+    text-align: center;
+}

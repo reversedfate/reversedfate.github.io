@@ -1,0 +1,83 @@
+/* Initiative styles for D&D Battle Simulator */
+@import '../variables.css';
+
+.initiative-item {
+    display: flex;
+    align-items: center;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    margin-bottom: var(--spacing-xs);
+    background: #444;
+    border-radius: var(--border-radius-sm);
+    border-left: 4px solid transparent;
+}
+
+.initiative-item.current-turn {
+    background: #555;
+    box-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
+}
+
+.initiative-roll {
+    display: inline-block;
+    width: 25px;
+    height: 25px;
+    line-height: 25px;
+    text-align: center;
+    background: #333;
+    border-radius: 50%;
+    margin-right: var(--spacing-sm);
+    font-weight: bold;
+}
+
+.initiative-name {
+    flex: 1;
+    margin-right: var(--spacing-sm);
+}
+
+.initiative-hp {
+    font-size: var(--font-xs);
+    color: #ccc;
+}
+
+.initiative-row {
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid #444;
+    padding: 5px 0;
+}
+
+.initiative-row.active {
+    background: #555;
+}
+
+.initiative-value {
+    width: 40px;
+    text-align: center;
+    font-weight: bold;
+}
+
+.creature-status {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    margin-right: 10px;
+}
+
+.creature-status.alive {
+    background: green;
+}
+
+.creature-status.wounded {
+    background: orange;
+}
+
+.creature-status.dead {
+    background: red;
+}
+
+/* Current character action info */
+#action-info {
+    background: #444;
+    border-radius: var(--border-radius-sm);
+    padding: 10px;
+    margin: 10px 0;
+}

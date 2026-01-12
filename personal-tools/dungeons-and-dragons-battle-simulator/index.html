@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>D&D Battle Simulator</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="theme-color" content="#333">
+    <link rel="icon" href="favicon.ico" type="image/x-icon">
+    <link rel="stylesheet" href="css/main.css">
+</head>
+
+<body>
+    <div id="arenaWrap">
+        <div id="timerDisplay">Round 0 - Not Started</div>
+        <div id="arena"><svg id="svg"></svg></div>
+    </div>
+
+    <!-- Floating control buttons -->
+    <div id="fabControls">
+        <button id="btnSettings"><span class="icon">⚙️</span><span class="label">Settings</span></button>
+        <button id="btnLogs">
+            <span class="icon">📜</span>
+            <span class="label">Logs</span>
+            <span id="logBadge">0</span>
+        </button>
+        <button id="btnImport"><span class="icon">📥</span><span class="label">Import</span></button>
+        <button id="btnCombat"><span class="icon">⚔️</span><span class="label">Combat</span></button>
+        <button id="btnInspect"><span class="icon">🔍</span><span class="label">Inspect</span></button>
+        <button id="btnDiceRoller"><span class="icon">🎲</span><span class="label">Dice</span></button>
+    </div>
+
+    <!-- Hidden drawer for settings -->
+    <div id="settingsDrawer">
+        <h3>Settings</h3>
+        <div id="controls" style="padding-top: 4px;">
+            <label>
+                Grid Size:
+                <select id="gridSizeSel">
+                    <option value="5">5 ft</option>
+                    <option value="10" selected>10 ft</option>
+                    <option value="15">15 ft</option>
+                </select>
+            </label>
+            <label>
+                Arena Width:
+                <input type="number" id="arenaWidth" min="10" max="100" value="20">
+            </label>
+            <label>
+                Arena Height:
+                <input type="number" id="arenaHeight" min="10" max="100" value="20">
+            </label>
+            
+            <hr style="margin: 15px 0; border: none; border-top: 1px solid #555;">
+            
+            <label>
+                Custom 5e.tools URL:
+                <input type="text" id="customToolsUrl" placeholder="https://your-custom-5e.tools">
+            </label>
+            <p class="setting-desc">Leave empty to use the default 5e.tools website</p>
+            
+            <button id="applySettings" class="combat-button">Apply Settings</button>
+        </div>
+    </div>
+
+    <!-- Hidden drawer for logs -->
+    <div id="logDrawer">
+        <h3>Combat Log</h3>
+        <div id="logContainer"></div>
+    </div>
+
+    <!-- Hidden drawer for importing creatures -->
+    <div id="importDrawer">
+        <h3>Import Creature</h3>
+        <input type="text" id="creatureSearch" placeholder="Search 5e.tools creatures...">
+        <div id="creatureList"></div>
+        <div id="teamSelector">
+            <h4>Select Team:</h4>
+            <div class="team-option">
+                <input type="radio" id="team1" name="team" value="1" checked>
+                <label for="team1">Team 1</label>
+            </div>
+            <div class="team-option">
+                <input type="radio" id="team2" name="team" value="2">
+                <label for="team2">Team 2</label>
+            </div>
+            <div class="team-option">
+                <input type="radio" id="team3" name="team" value="3">
+                <label for="team3">Team 3</label>
+            </div>
+            <div class="team-option">
+                <input type="radio" id="team4" name="team" value="4">
+                <label for="team4">Team 4</label>
+            </div>
+        </div>
+        <button id="placeCreature" class="combat-button">Place Selected Creature</button>
+    </div>
+
+    <!-- Hidden drawer for combat controls -->
+    <div id="combatDrawer">
+        <h3>Combat Controls</h3>
+        <div id="initiative-container">
+            <button id="start-combat" class="combat-button">Start Combat</button>
+            <button id="next-turn" class="combat-button" disabled>Next Turn</button>
+            <button id="end-combat" class="combat-button" disabled>End Combat</button>
+            <button id="reset-combat" class="combat-button">Reset Combat</button>
+        </div>
+        
+        <div id="ai-settings">
+            <h4>AI Control</h4>
+            <button id="auto-turn" class="combat-button" disabled>Let AI Play This Turn</button>
+            <div class="checkbox-container">
+                <input type="checkbox" id="auto-all" name="auto-all">
+                <label for="auto-all">Automatically Play AI Turns</label>
+            </div>
+            <div>
+                <button id="set-all-ai" class="combat-button">Set All Creatures to AI Control</button>
+            </div>
+        </div>
+        
+        <h4>Initiative Order</h4>
+        <div id="initiative-list"></div>
+        
+        <div id="action-info">
+            <p>No active combat</p>
+        </div>
+        
+        <div id="action-buttons"></div>
+    </div>
+
+    <div id="inspectDrawer">
+        <h3>Inspection</h3>
+        <div id="help">
+            <summary>🛈 shortcuts</summary>
+            <ul>
+                <li>Space – labels</li>
+                <li>Esc – clear selection</li>
+                <li>Click – inspect</li>
+                <li>Drag void – pan</li>
+                <li>Wheel – zoom</li>
+            </ul>
+        </div>
+        <div id="statsPanel"><em>Click a creature to inspect.</em></div>
+    </div>
+    
+    <!-- Dice Roller Drawer -->
+    <div id="diceRollerDrawer">
+        <h3>Dice Roller</h3>
+        <div id="diceControls">
+            <div class="dice-row">
+                <button class="dice-btn" data-dice="d4">d4</button>
+                <input type="number" id="d4Count" value="1" min="1" max="20">
+                <span class="dice-plus">+</span>
+                <input type="number" id="d4Modifier" value="0" min="-20" max="20">
+            </div>
+            <div class="dice-row">
+                <button class="dice-btn" data-dice="d6">d6</button>
+                <input type="number" id="d6Count" value="1" min="1" max="20">
+                <span class="dice-plus">+</span>
+                <input type="number" id="d6Modifier" value="0" min="-20" max="20">
+            </div>
+            <div class="dice-row">
+                <button class="dice-btn" data-dice="d8">d8</button>
+                <input type="number" id="d8Count" value="1" min="1" max="20">
+                <span class="dice-plus">+</span>
+                <input type="number" id="d8Modifier" value="0" min="-20" max="20">
+            </div>
+            <div class="dice-row">
+                <button class="dice-btn" data-dice="d10">d10</button>
+                <input type="number" id="d10Count" value="1" min="1" max="20">
+                <span class="dice-plus">+</span>
+                <input type="number" id="d10Modifier" value="0" min="-20" max="20">
+            </div>
+            <div class="dice-row">
+                <button class="dice-btn" data-dice="d12">d12</button>
+                <input type="number" id="d12Count" value="1" min="1" max="20">
+                <span class="dice-plus">+</span>
+                <input type="number" id="d12Modifier" value="0" min="-20" max="20">
+            </div>
+            <div class="dice-row">
+                <button class="dice-btn" data-dice="d20">d20</button>
+                <input type="number" id="d20Count" value="1" min="1" max="20">
+                <span class="dice-plus">+</span>
+                <input type="number" id="d20Modifier" value="0" min="-20" max="20">
+            </div>
+            <div class="dice-row">
+                <button class="dice-btn" data-dice="d100">d100</button>
+                <input type="number" id="d100Count" value="1" min="1" max="20">
+                <span class="dice-plus">+</span>
+                <input type="number" id="d100Modifier" value="0" min="-20" max="20">
+            </div>
+            
+            <div class="advantage-row">
+                <label>
+                    <input type="radio" name="advantage" value="normal" checked> Normal
+                </label>
+                <label>
+                    <input type="radio" name="advantage" value="advantage"> Advantage
+                </label>
+                <label>
+                    <input type="radio" name="advantage" value="disadvantage"> Disadvantage
+                </label>
+            </div>
+            
+            <div class="custom-roll">
+                <input type="text" id="customDiceFormula" placeholder="e.g. 2d6+3" value="">
+                <button id="rollCustom" class="combat-button">Roll Custom</button>
+            </div>
+        </div>
+        
+        <div id="diceResults">
+            <h4>Results</h4>
+            <div id="resultsList"></div>
+        </div>
+    </div>
+
+    <!-- Range indicators layer (will be added dynamically) -->
+    <div id="rangeIndicators" class="hidden"></div>
+    
+    <!-- Target selection modal -->
+    <div id="targetSelectionModal" class="modal hidden">
+        <div class="modal-content">
+            <h3>Select Target</h3>
+            <div id="targetList"></div>
+            <div class="modal-actions">
+                <button id="cancelTargetSelection" class="combat-button">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load main JavaScript module -->
+    <script src="js/main.js" type="module"></script>
+</body>
+
+</html>
