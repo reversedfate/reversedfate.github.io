@@ -3,150 +3,757 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My experiments</title>
+    <title>Sigurds Kalnroze | Tools & Experiments</title>
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --accent: #64ffda;
+            --accent-dim: rgba(100, 255, 218, 0.1);
+            --text: #e6e6e6;
+            --text-muted: #888;
+            --card-bg: rgba(255, 255, 255, 0.03);
+            --card-border: rgba(255, 255, 255, 0.06);
+            --card-hover: rgba(255, 255, 255, 0.07);
+        }
+
         html, body {
             height: 100%;
-            margin: 0;
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: transparent;
+            color: var(--text);
+            line-height: 1.6;
         }
-        body {
-            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-            background: #0d1117;
-            color: #ffffff;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        canvas#bg {
+
+        /* Animated background */
+        #bg-canvas {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            z-index: -1;
+            z-index: 0;
         }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* Header */
         header {
-            margin-top: 3rem;
+            padding: 80px 0 60px;
             text-align: center;
+            position: relative;
         }
-        header h1 {
-            margin: 0;
-            font-size: 3rem;
+
+        .logo {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 24px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent-dim), transparent);
+            border: 2px solid rgba(100, 255, 218, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--accent);
         }
-        header p {
-            margin: 0.5rem 0 0;
-            color: #64ffda;
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
         }
-        main {
-            width: 100%;
-            max-width: 700px;
-            margin: 2rem auto;
-            padding: 0 1rem;
+
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            margin-bottom: 20px;
         }
-        ul.links {
-            list-style: none;
-            padding: 0;
-        }
-        ul.links li {
-            margin: 1rem 0;
-            padding: 1rem 1.5rem;
-            background: rgba(255,255,255,0.07);
-            border-radius: 10px;
-            backdrop-filter: blur(6px);
-            transition: background 0.3s;
-        }
-        ul.links li:hover {
-            background: rgba(255,255,255,0.15);
-        }
-        a {
-            color: #64ffda;
+
+        .contact {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--accent);
             text-decoration: none;
-            font-size: 1.2rem;
-            display: block;
+            font-size: 0.9rem;
+            padding: 8px 16px;
+            border-radius: 20px;
+            background: var(--accent-dim);
+            transition: all 0.2s ease;
         }
-        a:hover {
+
+        .contact:hover {
+            background: rgba(100, 255, 218, 0.2);
+        }
+
+        .contact svg {
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+        }
+
+        /* Tools section */
+        .section-title {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--text-muted);
+            margin-bottom: 24px;
+            padding-left: 4px;
+        }
+
+        .tools-grid {
+            display: grid;
+            gap: 16px;
+            margin-bottom: 80px;
+        }
+
+        .tool-card {
+            display: block;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 24px;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.25s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .tool-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 3px;
+            height: 100%;
+            background: var(--accent);
+            opacity: 0;
+            transition: opacity 0.25s ease;
+        }
+
+        .tool-card:hover {
+            background: var(--card-hover);
+            border-color: rgba(100, 255, 218, 0.2);
+            transform: translateX(4px);
+        }
+
+        .tool-card:hover::before {
+            opacity: 1;
+        }
+
+        .tool-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .tool-name {
+            font-size: 1.15rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .tool-arrow {
+            color: var(--accent);
+            opacity: 0;
+            transform: translateX(-8px);
+            transition: all 0.25s ease;
+        }
+
+        .tool-card:hover .tool-arrow {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        .tool-description {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .tool-tags {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+            flex-wrap: wrap;
+        }
+
+        .tag {
+            font-size: 0.7rem;
+            padding: 4px 10px;
+            background: rgba(100, 255, 218, 0.08);
+            color: var(--accent);
+            border-radius: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 40px 0;
+            border-top: 1px solid var(--card-border);
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        footer a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        footer a:hover {
             text-decoration: underline;
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            header {
+                padding: 60px 0 40px;
+            }
+
+            h1 {
+                font-size: 1.8rem;
+            }
+
+            .tool-card {
+                padding: 20px;
+            }
         }
     </style>
 </head>
 <body>
-    <canvas id="bg"></canvas>
-    <header>
-        <h1>My Experiments</h1>
-        <p>A collection of little tools</p>
-    </header>
-    <main>
-        <ul class="links">
-            <li><a href="civ6-tools/draft-pick/">Civilization 6 Draft Picker</a></li>
-            <li><a href="personal-tools/100-men-vs-animal/">100 Men vs Animal Arena</a></li>
-            <li><a href="twilight-imperium-tools/thinking-timer/">Twilight Imperium Thinking Timer</a></li>
-        </ul>
-    </main>
+    <canvas id="bg-canvas"></canvas>
+
+    <div class="container">
+        <header>
+            <div class="logo">SK</div>
+            <h1>Tools & Experiments</h1>
+            <p class="subtitle">A collection of interactive utilities and creative tools</p>
+            <a href="mailto:sigurds.kalnroze@gmail.com" class="contact">
+                <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+                sigurds.kalnroze@gmail.com
+            </a>
+        </header>
+
+        <main>
+            <p class="section-title">Available Tools</p>
+
+            <div class="tools-grid">
+                <a href="personal-tools/word-search-generator/" class="tool-card">
+                    <div class="tool-header">
+                        <span class="tool-name">Word Search Generator</span>
+                        <span class="tool-arrow">→</span>
+                    </div>
+                    <p class="tool-description">
+                        Create custom word search puzzles with support for Latvian and English alphabets.
+                        Configure grid size, word directions, styling, and export as PNG. Includes deterministic
+                        seed-based generation for reproducible puzzles.
+                    </p>
+                    <div class="tool-tags">
+                        <span class="tag">Generator</span>
+                        <span class="tag">Latvian</span>
+                        <span class="tag">Export</span>
+                    </div>
+                </a>
+
+                <a href="personal-tools/100-men-vs-animal/" class="tool-card">
+                    <div class="tool-header">
+                        <span class="tool-name">100 Men vs Animal Arena</span>
+                        <span class="tool-arrow">→</span>
+                    </div>
+                    <p class="tool-description">
+                        A battle simulation that pits 100 unarmed humans against various animals.
+                        Watch the chaos unfold and see who survives in this physics-based arena combat simulator.
+                    </p>
+                    <div class="tool-tags">
+                        <span class="tag">Simulation</span>
+                        <span class="tag">Interactive</span>
+                    </div>
+                </a>
+
+                <a href="civ6-tools/draft-pick/" class="tool-card">
+                    <div class="tool-header">
+                        <span class="tool-name">Civilization 6 Draft Picker</span>
+                        <span class="tool-arrow">→</span>
+                    </div>
+                    <p class="tool-description">
+                        A drafting tool for Civilization 6 multiplayer games. Randomly assigns civilizations
+                        to players with customizable pools and exclusion rules for balanced competitive play.
+                    </p>
+                    <div class="tool-tags">
+                        <span class="tag">Gaming</span>
+                        <span class="tag">Civ6</span>
+                        <span class="tag">Multiplayer</span>
+                    </div>
+                </a>
+
+                <a href="twilight-imperium-tools/thinking-timer/" class="tool-card">
+                    <div class="tool-header">
+                        <span class="tool-name">Twilight Imperium Thinking Timer</span>
+                        <span class="tool-arrow">→</span>
+                    </div>
+                    <p class="tool-description">
+                        A turn timer designed for Twilight Imperium board game sessions. Helps keep the game
+                        moving by tracking thinking time for each player during their turns.
+                    </p>
+                    <div class="tool-tags">
+                        <span class="tag">Board Games</span>
+                        <span class="tag">Timer</span>
+                    </div>
+                </a>
+            </div>
+        </main>
+
+        <footer>
+            <p>Made with curiosity · <a href="mailto:sigurds.kalnroze@gmail.com">Get in touch</a></p>
+        </footer>
+    </div>
+
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const canvas = document.getElementById('bg');
-            const ctx = canvas.getContext('2d');
+        const canvas = document.getElementById('bg-canvas');
+        const ctx = canvas.getContext('2d');
 
-            let width, height;
-            function resize() {
-                width = canvas.width = window.innerWidth;
-                height = canvas.height = window.innerHeight;
-            }
-            window.addEventListener('resize', resize);
-            resize();
+        let width, height, halfWidth, halfHeight;
+        let particles = [];
+        let mouse = { x: null, y: null };
+        let time = 0;
 
-            const particles = [];
-            const COUNT = 70;
-            for (let i = 0; i < COUNT; i++) {
+        // Particle type configurations
+        // A = Cyan (hunter), B = Purple (evader), C = Coral (stalker)
+        // Toned down colors for subtlety
+        const TYPES = [
+            { r: 70, g: 180, b: 155, maxSpeed: 2.2, friction: 0.93, size: 1.8 },   // A - Cyan: balanced
+            { r: 120, g: 95, b: 180, maxSpeed: 2.8, friction: 0.91, size: 1.5 },   // B - Purple: fast, agile
+            { r: 180, g: 110, b: 95, maxSpeed: 1.8, friction: 0.95, size: 2.0 },   // C - Coral: slow, persistent
+        ];
+
+        // Interaction matrix: [i][j] = how type i feels about type j
+        // Rock-paper-scissors with tuned asymmetry for dynamic behavior
+        const ATTRACTIONS = [
+            //    A      B      C
+            [  0.4,   0.9,  -0.7],  // A: mild self-cluster, strongly chases B, flees C
+            [ -0.8,  -0.2,   0.9],  // B: strongly flees A, mild disperse, strongly chases C
+            [  0.9,  -0.8,   0.1],  // C: strongly chases A, strongly flees B, very mild cluster
+        ];
+
+        // Type-specific interaction ranges
+        const INTERACT_RADIUS = [
+            [80, 110, 90],   // A sees: self nearby, B far, C medium
+            [100, 70, 110],  // B sees: A far (to flee early), self close, C far
+            [110, 100, 75],  // C sees: A far (to chase), B far (to flee), self close
+        ];
+
+        // Physics constants
+        const PARTICLE_COUNT = 380;
+        const MIN_RADIUS = 8;
+        const MIN_RADIUS_SQ = MIN_RADIUS * MIN_RADIUS;
+        const REPULSION_RADIUS = 25;
+        const REPULSION_RADIUS_SQ = REPULSION_RADIUS * REPULSION_RADIUS;
+        const REPULSION_STRENGTH = 0.025;
+        const FORCE_SCALE = 0.016;
+        const NOISE_SCALE = 0.003;
+        const PANIC_MULTIPLIER = 1.5;
+        const PANIC_DISTANCE = 40;
+        const PANIC_DISTANCE_SQ = PANIC_DISTANCE * PANIC_DISTANCE;
+
+        // Pre-squared interaction radii
+        const INTERACT_RADIUS_SQ = INTERACT_RADIUS.map(row => row.map(r => r * r));
+
+        // Spatial hash
+        const CELL_SIZE = 120;
+        let grid = new Map();
+        let gridCols, gridRows;
+
+        // Reusable objects/arrays to reduce GC
+        let deltaX = 0, deltaY = 0;
+        const neighborsPool = new Array(100);
+        let neighborsCount = 0;
+
+        // Pre-allocated typed arrays for batch rendering
+        let particlesByType = [[], [], []];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            halfWidth = width / 2;
+            halfHeight = height / 2;
+            gridCols = Math.ceil(width / CELL_SIZE);
+            gridRows = Math.ceil(height / CELL_SIZE);
+            if (particles.length === 0) initParticles();
+        }
+
+        function initParticles() {
+            particles = [];
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                const type = Math.floor(Math.random() * TYPES.length);
                 particles.push({
                     x: Math.random() * width,
                     y: Math.random() * height,
                     vx: (Math.random() - 0.5) * 0.5,
                     vy: (Math.random() - 0.5) * 0.5,
-                    size: Math.random() * 3 + 1
+                    type: type,
+                    intensity: 0,  // Interaction intensity for color pulse
+                    localDensity: 0
                 });
             }
+        }
 
-            const mouse = { x: null, y: null };
-            window.addEventListener('mousemove', e => {
-                mouse.x = e.clientX;
-                mouse.y = e.clientY;
-            });
-            window.addEventListener('mouseleave', () => {
-                mouse.x = null;
-                mouse.y = null;
-            });
+        // Inline grid key calculation for speed
+        function buildGrid() {
+            grid.clear();
+            for (let i = 0; i < particles.length; i++) {
+                const p = particles[i];
+                const gx = (p.x / CELL_SIZE) | 0;
+                const gy = (p.y / CELL_SIZE) | 0;
+                const key = (gx & 0xFFFF) | ((gy & 0xFFFF) << 16);
+                let cell = grid.get(key);
+                if (!cell) {
+                    cell = [];
+                    grid.set(key, cell);
+                }
+                cell.push(i);
+            }
+        }
 
-            function draw() {
-                ctx.clearRect(0, 0, width, height);
-                particles.forEach(p => {
-                    p.x += p.vx;
-                    p.y += p.vy;
+        // Optimized neighbor lookup - writes to neighborsPool, returns count
+        function fillNeighbors(x, y) {
+            neighborsCount = 0;
+            const gx = (x / CELL_SIZE) | 0;
+            const gy = (y / CELL_SIZE) | 0;
 
-                    if (p.x < 0 || p.x > width) p.vx *= -1;
-                    if (p.y < 0 || p.y > height) p.vy *= -1;
+            for (let dx = -1; dx <= 1; dx++) {
+                for (let dy = -1; dy <= 1; dy++) {
+                    let nx = gx + dx;
+                    let ny = gy + dy;
+                    if (nx < 0) nx += gridCols;
+                    else if (nx >= gridCols) nx -= gridCols;
+                    if (ny < 0) ny += gridRows;
+                    else if (ny >= gridRows) ny -= gridRows;
 
-                    ctx.beginPath();
-                    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-                    ctx.fillStyle = 'rgba(255,255,255,0.7)';
-                    ctx.fill();
-                });
+                    const key = (nx & 0xFFFF) | ((ny & 0xFFFF) << 16);
+                    const cell = grid.get(key);
+                    if (cell) {
+                        for (let i = 0, len = cell.length; i < len; i++) {
+                            neighborsPool[neighborsCount++] = cell[i];
+                        }
+                    }
+                }
+            }
+        }
 
-                if (mouse.x !== null) {
-                    ctx.beginPath();
-                    ctx.arc(mouse.x, mouse.y, 100, 0, Math.PI * 2);
-                    const grad = ctx.createRadialGradient(mouse.x, mouse.y, 0, mouse.x, mouse.y, 100);
-                    grad.addColorStop(0, 'rgba(100,255,218,0.3)');
-                    grad.addColorStop(1, 'rgba(100,255,218,0)');
-                    ctx.fillStyle = grad;
-                    ctx.fill();
+        // Inline wrapped delta calculation - stores in deltaX, deltaY
+        function calcWrappedDelta(x1, y1, x2, y2) {
+            deltaX = x2 - x1;
+            deltaY = y2 - y1;
+
+            if (deltaX > halfWidth) deltaX -= width;
+            else if (deltaX < -halfWidth) deltaX += width;
+            if (deltaY > halfHeight) deltaY -= height;
+            else if (deltaY < -halfHeight) deltaY += height;
+        }
+
+        // Smooth Gaussian-like force curve
+        function forceFunction(dist, attraction, maxRadius) {
+            if (dist < MIN_RADIUS) {
+                // Smooth repulsion when too close
+                const t = dist / MIN_RADIUS;
+                return -1.2 * (1 - t * t);
+            } else if (dist < maxRadius) {
+                // Gaussian-like curve for smoother transitions
+                const t = (dist - MIN_RADIUS) / (maxRadius - MIN_RADIUS);
+                const curve = t * Math.exp(1 - t) * 1.5;  // Peaks around t=1, smooth falloff
+                return attraction * curve;
+            }
+            return 0;
+        }
+
+        // Simplex-like noise for micro-perturbations
+        function noise(x, y, t) {
+            const n1 = Math.sin(x * 0.01 + t) * Math.cos(y * 0.012 + t * 0.7);
+            const n2 = Math.sin(x * 0.008 - t * 0.5) * Math.sin(y * 0.009 + t * 0.3);
+            return (n1 + n2) * 0.5;
+        }
+
+        function update() {
+            time += 0.016;
+            buildGrid();
+
+            // Pre-calculate time-based values once per frame
+            const timeSin = Math.sin(time * 0.1);
+            const timeCos = Math.cos(time * 0.08);
+
+            for (let i = 0; i < particles.length; i++) {
+                const p = particles[i];
+                const pType = p.type;
+                const typeConfig = TYPES[pType];
+                const attractionRow = ATTRACTIONS[pType];
+                const radiusSqRow = INTERACT_RADIUS_SQ[pType];
+                const radiusRow = INTERACT_RADIUS[pType];
+                let fx = 0, fy = 0;
+                let intensity = 0;
+                let neighborCount = 0;
+
+                fillNeighbors(p.x, p.y);
+
+                for (let n = 0; n < neighborsCount; n++) {
+                    const j = neighborsPool[n];
+                    if (i === j) continue;
+                    const other = particles[j];
+                    const otherType = other.type;
+
+                    calcWrappedDelta(p.x, p.y, other.x, other.y);
+                    const distSq = deltaX * deltaX + deltaY * deltaY;
+
+                    if (distSq === 0) continue;
+
+                    // Universal repulsion to prevent clumping
+                    if (distSq < REPULSION_RADIUS_SQ) {
+                        const dist = Math.sqrt(distSq);
+                        const invDist = 1 / dist;
+                        const repulsion = REPULSION_STRENGTH * (1 - dist / REPULSION_RADIUS);
+                        fx -= deltaX * invDist * repulsion;
+                        fy -= deltaY * invDist * repulsion;
+                    }
+
+                    const maxRadiusSq = radiusSqRow[otherType];
+
+                    if (distSq < maxRadiusSq) {
+                        const dist = Math.sqrt(distSq);
+                        const invDist = 1 / dist;
+                        const maxRadius = radiusRow[otherType];
+                        const attraction = attractionRow[otherType];
+                        let force = forceFunction(dist, attraction, maxRadius) * FORCE_SCALE;
+
+                        // Panic response: accelerate when predator is very close
+                        if (attraction < -0.3 && distSq < PANIC_DISTANCE_SQ) {
+                            force *= PANIC_MULTIPLIER;
+                            intensity += 0.2;
+                        }
+
+                        fx += deltaX * invDist * force;
+                        fy += deltaY * invDist * force;
+
+                        // Track interaction intensity (simplified check)
+                        if (attraction > 0.5 || attraction < -0.5) {
+                            if (distSq < maxRadiusSq * 0.36) {  // 0.6^2
+                                intensity += 0.1 * (1 - dist / maxRadius);
+                            }
+                        }
+
+                        if (distSq < 2500) neighborCount++;  // 50^2
+                    }
                 }
 
-                requestAnimationFrame(draw);
+                // Micro-noise to prevent stagnation
+                const noiseX = noise(p.x, p.y, time);
+                const noiseY = noise(p.y, p.x, time + 100);
+                fx += noiseX * NOISE_SCALE;
+                fy += noiseY * NOISE_SCALE;
+
+                // Gentle drift based on time (creates slow global currents)
+                fx += (timeSin + p.y * 0.002) * 0.0008;
+                fy += (timeCos + p.x * 0.002) * 0.0008;
+
+                // Mouse interaction
+                if (mouse.x !== null) {
+                    calcWrappedDelta(p.x, p.y, mouse.x, mouse.y);
+                    const distSq = deltaX * deltaX + deltaY * deltaY;
+                    if (distSq > 400 && distSq < 40000) {
+                        const dist = Math.sqrt(distSq);
+                        const force = 0.012 * (1 - dist * 0.005);  // 1/200 = 0.005
+                        const invDist = 1 / dist;
+                        fx += deltaX * invDist * force;
+                        fy += deltaY * invDist * force;
+                    }
+                }
+
+                // Apply type-specific friction
+                p.vx = (p.vx + fx) * typeConfig.friction;
+                p.vy = (p.vy + fy) * typeConfig.friction;
+
+                // Clamp to type-specific max speed (avoid sqrt when possible)
+                const speedSq = p.vx * p.vx + p.vy * p.vy;
+                const maxSpeedSq = typeConfig.maxSpeed * typeConfig.maxSpeed;
+                if (speedSq > maxSpeedSq) {
+                    const scale = typeConfig.maxSpeed / Math.sqrt(speedSq);
+                    p.vx *= scale;
+                    p.vy *= scale;
+                }
+
+                p.x += p.vx;
+                p.y += p.vy;
+
+                // Wrap around edges
+                if (p.x < 0) p.x += width;
+                else if (p.x >= width) p.x -= width;
+                if (p.y < 0) p.y += height;
+                else if (p.y >= height) p.y -= height;
+
+                // Smooth intensity decay
+                p.intensity = p.intensity * 0.92 + Math.min(intensity, 1) * 0.08;
+                p.localDensity = p.localDensity * 0.95 + Math.min(neighborCount * 0.125, 1) * 0.05;
             }
+        }
+
+        function draw() {
+            // Variable trail persistence based on global activity
+            let avgIntensity = 0;
+            const len = particles.length;
+            for (let i = 0; i < len; i++) {
+                avgIntensity += particles[i].intensity;
+            }
+            avgIntensity /= len;
+
+            // Background with tint - ensures trails fade completely
+            const fadeAlpha = 0.12 + avgIntensity * 0.04;
+            ctx.fillStyle = `rgba(10, 10, 15, ${fadeAlpha})`;
+            ctx.fillRect(0, 0, width, height);
+
+            // Sort particles by type for batched rendering
+            particlesByType[0].length = 0;
+            particlesByType[1].length = 0;
+            particlesByType[2].length = 0;
+            for (let i = 0; i < len; i++) {
+                particlesByType[particles[i].type].push(i);
+            }
+
+            // Draw connections - batch by type to reduce state changes
+            ctx.lineWidth = 1;
+            for (let type = 0; type < 3; type++) {
+                const typeParticles = particlesByType[type];
+                const t = TYPES[type];
+                const typeLen = typeParticles.length;
+
+                // Same-type connections in one batch
+                ctx.strokeStyle = `rgba(${t.r}, ${t.g}, ${t.b}, 0.06)`;
+                ctx.beginPath();
+
+                for (let pi = 0; pi < typeLen; pi++) {
+                    const i = typeParticles[pi];
+                    const p = particles[i];
+
+                    fillNeighbors(p.x, p.y);
+
+                    for (let n = 0; n < neighborsCount; n++) {
+                        const j = neighborsPool[n];
+                        if (j <= i) continue;
+                        const other = particles[j];
+                        if (other.type !== type) continue;
+
+                        calcWrappedDelta(p.x, p.y, other.x, other.y);
+                        const distSq = deltaX * deltaX + deltaY * deltaY;
+
+                        if (distSq < 2500 && distSq > 0) {  // 50^2
+                            ctx.moveTo(p.x, p.y);
+                            ctx.lineTo(p.x + deltaX, p.y + deltaY);
+                        }
+                    }
+                }
+                ctx.stroke();
+            }
+
+            // Draw particles batched by type
+            for (let type = 0; type < 3; type++) {
+                const typeParticles = particlesByType[type];
+                const t = TYPES[type];
+                const maxSpeed = t.maxSpeed;
+                const invMaxSpeed = 1 / maxSpeed;
+                const baseSize = t.size;
+                const typeLen = typeParticles.length;
+
+                for (let pi = 0; pi < typeLen; pi++) {
+                    const i = typeParticles[pi];
+                    const p = particles[i];
+                    const speedSq = p.vx * p.vx + p.vy * p.vy;
+                    const speed = Math.sqrt(speedSq);
+                    const pIntensity = p.intensity;
+
+                    // Toned down alpha
+                    const alpha = 0.25 + speed * invMaxSpeed * 0.15 + pIntensity * 0.15;
+
+                    // Size varies by type, speed, and intensity
+                    const radius = baseSize + speed * 0.2 + pIntensity * 0.4;
+
+                    // Subtle color shift based on intensity
+                    const intensityBoost = pIntensity * 20;
+                    const r = t.r + intensityBoost;
+                    const g = t.g + intensityBoost;
+                    const b = t.b + intensityBoost;
+
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(${r | 0}, ${g | 0}, ${b | 0}, ${alpha.toFixed(2)})`;
+                    ctx.fill();
+                }
+            }
+
+            // Mouse glow - subtle
+            if (mouse.x !== null) {
+                const gradient = ctx.createRadialGradient(
+                    mouse.x, mouse.y, 0,
+                    mouse.x, mouse.y, 80
+                );
+                gradient.addColorStop(0, 'rgba(70, 180, 155, 0.06)');
+                gradient.addColorStop(1, 'rgba(70, 180, 155, 0)');
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(mouse.x, mouse.y, 80, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function animate() {
+            update();
             draw();
+            requestAnimationFrame(animate);
+        }
+
+        // Event listeners
+        window.addEventListener('resize', resize);
+        window.addEventListener('mousemove', e => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
         });
+        window.addEventListener('mouseleave', () => {
+            mouse.x = null;
+            mouse.y = null;
+        });
+
+        window.addEventListener('touchmove', e => {
+            if (e.touches.length > 0) {
+                mouse.x = e.touches[0].clientX;
+                mouse.y = e.touches[0].clientY;
+            }
+        });
+        window.addEventListener('touchend', () => {
+            mouse.x = null;
+            mouse.y = null;
+        });
+
+        // Initialize
+        resize();
+        ctx.fillStyle = '#0a0a0f';
+        ctx.fillRect(0, 0, width, height);
+        animate();
     </script>
 </body>
 </html>
