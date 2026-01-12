@@ -1034,8 +1034,16 @@
 
             let generationSuccess = false;
 
+            const useSpecificSeed = DOM.useSpecificSeed.checked;
+
             do {
                 attempt++;
+
+                // Generate new seed for each retry when not using specific seed
+                if (attempt > 1 && !useSpecificSeed) {
+                    initRng();
+                }
+
                 updateStatus('Generating...', `Attempt ${attempt}/${MAX_ATTEMPTS} • Seed: ${currentSeed}`);
 
                 if (attempt % 5 === 0) {
@@ -1219,10 +1227,87 @@
             link.click();
         }
 
+        // Settings persistence
+        const STORAGE_KEY = 'wordSearchSettings';
+
+        function saveSettings() {
+            const settings = {
+                width: DOM.width.value,
+                height: DOM.height.value,
+                useSpecificSeed: DOM.useSpecificSeed.checked,
+                seed: DOM.seed.value,
+                alphabet: DOM.alphabet.value,
+                directions: {
+                    right: DOM.dirRight.checked,
+                    left: DOM.dirLeft.checked,
+                    down: DOM.dirDown.checked,
+                    up: DOM.dirUp.checked,
+                    downRight: DOM.dirDownRight.checked,
+                    downLeft: DOM.dirDownLeft.checked,
+                    upRight: DOM.dirUpRight.checked,
+                    upLeft: DOM.dirUpLeft.checked
+                },
+                fontFamily: DOM.fontFamily.value,
+                fontSize: DOM.fontSize.value,
+                spacing: DOM.spacing.value,
+                textColor: DOM.textColor.value,
+                highlightColor: DOM.highlightColor.value,
+                bgColor: DOM.bgColor.value,
+                transparentBg: DOM.transparentBg.checked,
+                showSolution: DOM.showSolution.checked,
+                words: DOM.words.value
+            };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+        }
+
+        function loadSettings() {
+            try {
+                const saved = localStorage.getItem(STORAGE_KEY);
+                if (!saved) return false;
+
+                const settings = JSON.parse(saved);
+
+                DOM.width.value = settings.width || 15;
+                DOM.height.value = settings.height || 15;
+                DOM.useSpecificSeed.checked = settings.useSpecificSeed || false;
+                DOM.seed.value = settings.seed || '';
+                DOM.alphabet.value = settings.alphabet || 'latvian';
+
+                if (settings.directions) {
+                    DOM.dirRight.checked = settings.directions.right ?? true;
+                    DOM.dirLeft.checked = settings.directions.left ?? true;
+                    DOM.dirDown.checked = settings.directions.down ?? true;
+                    DOM.dirUp.checked = settings.directions.up ?? true;
+                    DOM.dirDownRight.checked = settings.directions.downRight ?? true;
+                    DOM.dirDownLeft.checked = settings.directions.downLeft ?? true;
+                    DOM.dirUpRight.checked = settings.directions.upRight ?? true;
+                    DOM.dirUpLeft.checked = settings.directions.upLeft ?? true;
+                }
+
+                DOM.fontFamily.value = settings.fontFamily || "'Consolas', 'Courier New', monospace";
+                DOM.fontSize.value = settings.fontSize || 20;
+                DOM.spacing.value = settings.spacing || 2;
+                DOM.textColor.value = settings.textColor || '#eeeeee';
+                DOM.highlightColor.value = settings.highlightColor || '#e94560';
+                DOM.bgColor.value = settings.bgColor || '#1a1a2e';
+                DOM.transparentBg.checked = settings.transparentBg ?? true;
+                DOM.showSolution.checked = settings.showSolution || false;
+                DOM.words.value = settings.words || '';
+
+                return true;
+            } catch (e) {
+                console.warn('Failed to load settings:', e);
+                return false;
+            }
+        }
+
         // Event listeners
         DOM.btnGenerate.addEventListener('click', generatePuzzle);
         DOM.btnSave.addEventListener('click', savePNG);
-        DOM.useSpecificSeed.addEventListener('change', updateSeedFieldState);
+        DOM.useSpecificSeed.addEventListener('change', () => {
+            updateSeedFieldState();
+            saveSettings();
+        });
         DOM.btnCopySeed.addEventListener('click', () => {
             if (currentSeed) {
                 navigator.clipboard.writeText(currentSeed);
@@ -1230,10 +1315,30 @@
                 setTimeout(() => DOM.btnCopySeed.textContent = 'Copy', 1500);
             }
         });
-        DOM.showSolution.addEventListener('change', renderGrid);
+        DOM.showSolution.addEventListener('change', () => {
+            renderGrid();
+            saveSettings();
+        });
         DOM.panelToggle.addEventListener('click', togglePanel);
 
-        // Styling controls
+        // Settings that trigger save
+        const settingsInputs = [
+            DOM.width, DOM.height, DOM.seed, DOM.alphabet,
+            DOM.dirRight, DOM.dirLeft, DOM.dirDown, DOM.dirUp,
+            DOM.dirDownRight, DOM.dirDownLeft, DOM.dirUpRight, DOM.dirUpLeft,
+            DOM.fontFamily, DOM.fontSize, DOM.spacing,
+            DOM.textColor, DOM.highlightColor, DOM.bgColor, DOM.transparentBg,
+            DOM.words
+        ];
+
+        settingsInputs.forEach(input => {
+            input.addEventListener('change', saveSettings);
+            if (input.type === 'number' || input.type === 'text' || input.tagName === 'TEXTAREA') {
+                input.addEventListener('input', saveSettings);
+            }
+        });
+
+        // Styling controls - update preview on change
         DOM.fontFamily.addEventListener('change', renderGrid);
         DOM.fontSize.addEventListener('input', renderGrid);
         DOM.spacing.addEventListener('input', renderGrid);
@@ -1243,8 +1348,11 @@
         DOM.transparentBg.addEventListener('change', renderGrid);
 
         // Initial setup
+        const hasSettings = loadSettings();
         updateSeedFieldState();
-        DOM.words.value = 'SUNS\nKAKIS\nZIRGS\nVISTA\nGOVS\nCUKA\nAITA\nZIVS';
+        if (!hasSettings) {
+            DOM.words.value = 'SUNS\nKAKIS\nZIRGS\nVISTA\nGOVS\nCUKA\nAITA\nZIVS';
+        }
         generatePuzzle();
     </script>
 </body>
