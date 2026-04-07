@@ -297,6 +297,7 @@ function computeExpectedValue(handNumberValues, handModifierValues, remaining, h
 
     const breakdown = {
         bust:         { count: 0, prob: 0, avgDelta: -currentScore, weighted: 0 },
+        scBlocked:    { count: 0, prob: 0 },   // duplicate draws blocked by SecondChance (outcome=0)
         newNumber:    { count: 0, prob: 0, avgDelta: 0, weightedSum: 0, weighted: 0 },
         modifier:     { count: 0, prob: 0, avgDelta: 0, weightedSum: 0, weighted: 0 },
         flipThree:    { count: 0, prob: 0, evOf3Draws: 0, weighted: 0 },
@@ -316,6 +317,8 @@ function computeExpectedValue(handNumberValues, handModifierValues, remaining, h
                 if (hasSecondChance) {
                     // SC consumed — card discarded, hand unchanged, SC gone
                     outcome = 0;
+                    breakdown.scBlocked.count++;
+                    // no weighted EV contribution (outcome = 0)
                 } else {
                     // Bust
                     outcome = -currentScore;
@@ -341,8 +344,8 @@ function computeExpectedValue(handNumberValues, handModifierValues, remaining, h
                 const remWithout = remaining.filter(c => c.id !== card.id);
                 const ev3 = evOfFlipThreeDraws(handNumberValues, handModifierValues, remWithout, hasSecondChance);
                 outcome = ev3;
+                if (breakdown.flipThree.count === 0) breakdown.flipThree.evOf3Draws = ev3; // store once; all F3 cards give same EV
                 breakdown.flipThree.count++;
-                breakdown.flipThree.evOf3Draws = ev3;
                 breakdown.flipThree.weighted += w * ev3;
             } else if (card.name === 'SecondChance' && !hasSecondChance && depth === 0) {
                 // Gain SC protection — value = EV improvement from having SC on next draw
@@ -350,6 +353,8 @@ function computeExpectedValue(handNumberValues, handModifierValues, remaining, h
                 const remWithout  = remaining.filter(c => c.id !== card.id);
                 const evWithSC    = computeExpectedValue(handNumberValues, handModifierValues, remWithout, true,  1).evHit;
                 const evWithoutSC = computeExpectedValue(handNumberValues, handModifierValues, remWithout, false, 1).evHit;
+                // APPROX: SC value modelled as EV improvement on the next single draw.
+                // Underestimates SC value when bust probability rises over multiple future draws.
                 outcome = evWithSC - evWithoutSC;
                 breakdown.secondChance.count++;
                 breakdown.secondChance.weighted += w * outcome;
@@ -371,6 +376,7 @@ function computeExpectedValue(handNumberValues, handModifierValues, remaining, h
     // Finalize averages
     // avgDelta = weighted sum x n / count  (weightedSum = sum delta/n, so sum_delta = weightedSum*n)
     breakdown.bust.prob         = breakdown.bust.count / n;
+    breakdown.scBlocked.prob    = breakdown.scBlocked.count / n;
     breakdown.newNumber.prob    = breakdown.newNumber.count / n;
     breakdown.newNumber.avgDelta = breakdown.newNumber.count > 0
         ? breakdown.newNumber.weightedSum * n / breakdown.newNumber.count
@@ -389,20 +395,14 @@ function computeExpectedValue(handNumberValues, handModifierValues, remaining, h
 }
 
 // Approximate EV of 3 forced sequential draws (FlipThree effect)
-// Uses single-step EV for each draw — deck not updated between steps (conservative approx.)
 function evOfFlipThreeDraws(handNums, handMods, remaining, hasSC) {
     if (!remaining.length) return 0;
-    let total = 0;
-    // Draw 1
-    const r1 = computeExpectedValue(handNums, handMods, remaining, hasSC, 1);
-    total += r1.evHit;
-    // Draw 2 — approximate: same remaining (deck shrinks by ~1 but we don't know which card)
-    const r2 = computeExpectedValue(handNums, handMods, remaining, hasSC, 1);
-    total += r2.evHit;
-    // Draw 3
-    const r3 = computeExpectedValue(handNums, handMods, remaining, hasSC, 1);
-    total += r3.evHit;
-    return total;
+    // APPROX: Compute EV of one draw and multiply by 3.
+    // This assumes each of the 3 forced draws is independent from the same deck,
+    // which overestimates EV when bust probability is high (real FlipThree stops
+    // at bust, so draws 2 and 3 may never happen).
+    const { evHit } = computeExpectedValue(handNums, handMods, remaining, hasSC, 1);
+    return evHit * 3;
 }
 
 function getRecommendation(bustProb, evHit, handSize) {
