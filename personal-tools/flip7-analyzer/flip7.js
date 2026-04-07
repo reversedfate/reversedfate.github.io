@@ -103,7 +103,7 @@ const gameState = {
     phase: 'setup',
     round: 0,
     deck: [],             // remaining draw pile
-    discardThisRound: [], // drawn this round (reshuffled back at round start)
+    discardThisRound: [], // all cards drawn from the deck (persistent across rounds; reshuffled into deck only when draw pile runs empty mid-round)
     players: [],
     dealerIndex: 0,
     currentDealTarget: 0,
@@ -154,11 +154,9 @@ function resetGameState() {
 }
 
 function resetRound() {
-    // Reshuffle this round's drawn cards back into the deck before starting the next round
-    if (gameState.discardThisRound.length > 0) {
-        gameState.deck = shuffle([...gameState.deck, ...gameState.discardThisRound]);
-    }
-    gameState.discardThisRound = [];
+    // Cards in player hands are already tracked in discardThisRound (added when drawn).
+    // Do NOT reshuffle here — the discard pile persists across rounds and is only
+    // reshuffled back into the draw pile when the draw pile runs empty mid-round.
     gameState.actionPending = null;
     gameState.flipThreeState = null;
 
@@ -512,7 +510,15 @@ function pct(p) { return Math.round(p * 100) + '%'; }
    ══════════════════════════════════════════════════════════════════ */
 
 function drawCard() {
-    if (!gameState.deck.length) return null;
+    if (!gameState.deck.length) {
+        // Reshuffle discard pile back into deck, excluding cards currently in player hands
+        const inHands = new Set(gameState.players.flatMap(p => p.hand.map(c => c.id)));
+        const available = gameState.discardThisRound.filter(c => !inHands.has(c.id));
+        if (!available.length) return null; // truly empty — no cards anywhere
+        gameState.deck = shuffle(available);
+        gameState.discardThisRound = gameState.discardThisRound.filter(c => inHands.has(c.id));
+        addLog('Draw pile empty — discarded cards reshuffled back in!', 'action');
+    }
     const card = gameState.deck.pop();
     gameState.discardThisRound.push(card);
     return card;
@@ -983,7 +989,15 @@ function aiDecideMedium(player) {
 }
 
 function aiDecideHard(player) {
-    const remaining = [...gameState.deck];
+    // Hard AI does full card-counting: when the draw pile is thin, factor in the
+    // discard pile (minus cards in other players' hands) since a reshuffle is imminent.
+    const inHands = new Set(gameState.players.flatMap(p => p.hand.map(c => c.id)));
+    const reshufflable = gameState.discardThisRound.filter(c => !inHands.has(c.id));
+    const totalAvailable = gameState.deck.length + reshufflable.length;
+    // If deck is < 25% of available pool, treat the reshuffle as effectively already happened
+    const remaining = (gameState.deck.length < totalAvailable * 0.25)
+        ? [...gameState.deck, ...reshufflable]
+        : [...gameState.deck];
     const numVals = player.numberCards.map(c => c.value);
     const modVals = player.modifierCards.map(c => c.isX2 ? 'x2' : c.value);
     const bp = computeBustProbability(numVals, remaining);
