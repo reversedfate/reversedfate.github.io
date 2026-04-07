@@ -563,7 +563,7 @@ function dealOneCard() {
             // Resolve any Freeze/FlipThree action cards the target holds
             const pending = target.actionCards.filter(c => c.name === 'Freeze' || c.name === 'FlipThree');
             if (pending.length && target.isHuman) { queueActionPrompt(target, pending[0]); return 'wait-action'; }
-            if (pending.length) { const t2 = aiChooseTarget(target); if (t2) resolveAction(target, pending[0], t2); }
+            if (pending.length) { const t2 = aiChooseTarget(target, pending[0].name); if (t2) resolveAction(target, pending[0], t2); }
         }
         return true;
     }
@@ -614,7 +614,7 @@ function dealOneCard() {
         if (name === 'SecondChance') {
             if (player.secondChanceActive) {
                 // Already holding one — give to another (AI gives to lowest-threat target)
-                const t2 = aiChooseTarget(player);
+                const t2 = aiChooseTarget(player, 'SecondChance');
                 if (t2) {
                     addLog(`${player.name} already has Second Chance — passing it on`, 'reasoning');
                     resolveAction(player, ac, t2);
@@ -629,7 +629,7 @@ function dealOneCard() {
                 addLog(`${player.name} holds Second Chance`);
             }
         } else {
-            const t2 = aiChooseTarget(player);
+            const t2 = aiChooseTarget(player, name);
             if (t2) resolveAction(player, ac, t2);
         }
     }
@@ -653,6 +653,13 @@ function humanHit() {
     showCardReveal(player, card, () => {
         const result = processCard(player, card);
         renderSimulator();
+
+        // Flash the newly acquired card in the player's hand
+        const cardEl = document.querySelector(`[data-card-id="${card.id}"]`);
+        if (cardEl) {
+            cardEl.classList.add('card-just-acquired');
+            cardEl.addEventListener('animationend', () => cardEl.classList.remove('card-just-acquired'), { once: true });
+        }
 
         if (result === 'flip7') {
             SoundEngine.flip7();
@@ -722,7 +729,10 @@ function humanStay() {
 }
 
 function queueActionPrompt(player, actionCard) {
-    const validTargets = gameState.players.filter(p => p.idx !== player.idx && isPlayerActive(p));
+    const isFlipThree = actionCard.name === 'FlipThree';
+    const validTargets = gameState.players.filter(p =>
+        (isFlipThree || p.idx !== player.idx) && isPlayerActive(p)
+    );
     if (!validTargets.length) {
         // No valid targets — discard the action card silently and advance
         addLog(`${player.name}: no valid targets for ${actionCard.name} — discarded`, 'action');
@@ -742,7 +752,7 @@ function queueActionPrompt(player, actionCard) {
 function resolveActionChoice(targetIdx) {
     const pending = gameState.actionPending;
     if (!pending) return;
-    if (targetIdx === pending.sourceIdx) return; // no self-targeting
+    if (targetIdx === pending.sourceIdx && pending.card.name !== 'FlipThree') return;
     gameState.actionPending = null;
     hideActionModal();
 
@@ -878,10 +888,13 @@ function aiDecideHard(player) {
         : { action: 'stay', reasoning: `EV ${evHit.toFixed(1)} negative — banking ${computeRoundScore(player)} pts.` };
 }
 
-function aiChooseTarget(src) {
+function aiChooseTarget(src, actionName) {
     const others = gameState.players.filter(p => p.idx !== src.idx && isPlayerActive(p));
-    if (!others.length) return null;
-    return others.reduce((best, p) => computeRoundScore(p) > computeRoundScore(best) ? p : best, others[0]);
+    if (others.length)
+        return others.reduce((best, p) => computeRoundScore(p) > computeRoundScore(best) ? p : best, others[0]);
+    // Self-target only as last resort for FlipThree
+    if (actionName === 'FlipThree' && isPlayerActive(src)) return src;
+    return null;
 }
 
 
@@ -1113,6 +1126,7 @@ function showCardReveal(player, card, onDismiss) {
     const dur = getAnimDuration();
     if (dur === 0) { onDismiss(); return; }
 
+    const timeoutMs = Math.max(1800, Math.min(3000, dur * 8));
     const isDupe = card.type === 'number' && player.numberCards.some(c => c.value === card.value);
     const label = isDupe
         ? 'DUPLICATE — BUST!'
@@ -1123,30 +1137,33 @@ function showCardReveal(player, card, onDismiss) {
     const overlay = document.createElement('div');
     overlay.className = 'card-reveal-overlay';
     overlay.style.setProperty('--reveal-dur', dur + 'ms');
+    overlay.style.setProperty('--reveal-timeout', timeoutMs + 'ms');
     const corner = card.type === 'number' ? `<span class="card-corner">${card.value}</span>` : '';
     const typeClass = card.type + (isDupe ? ' bust-card' : '');
+    const dataValue = card.type === 'number' ? ` data-value="${card.value}"` : '';
     overlay.innerHTML = `
         <div class="card-reveal-dialog${isDupe ? ' reveal-bad' : ''}">
             <div class="reveal-card-wrap">
-                <div class="playing-card ${typeClass}">
+                <div class="playing-card ${typeClass}"${dataValue}>
                     ${corner}<span class="card-value-main">${card.symbol}</span>
                 </div>
                 ${isDupe ? '<div class="reveal-cross">✕</div>' : ''}
             </div>
             <div class="reveal-label">${label}</div>
             <div class="reveal-hint">CLICK TO CONTINUE</div>
+            <div class="reveal-progress-bar"></div>
         </div>`;
 
     (document.getElementById('sim-game') || document.body).appendChild(overlay);
 
-    // Double rAF ensures the transition fires after paint
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-        overlay.querySelector('.card-reveal-dialog').classList.add('entered');
-        // Play outcome sound once the card "lands"
-        setTimeout(() => isDupe ? SoundEngine.cardRevealBust() : SoundEngine.cardRevealGood(), dur);
-    }));
+    let dismissed = false;
+    let autoTimer = null;
 
-    overlay.addEventListener('click', () => {
+    function dismiss() {
+        if (dismissed) return;
+        dismissed = true;
+        if (autoTimer) clearTimeout(autoTimer);
+
         const dialog = overlay.querySelector('.card-reveal-dialog');
         const playerHandEl = document.querySelector(`[data-player-idx="${player.idx}"] .player-hand`);
         const targetRect = playerHandEl?.getBoundingClientRect();
@@ -1164,7 +1181,19 @@ function showCardReveal(player, card, onDismiss) {
             dialog.style.opacity    = '0';
         }
         setTimeout(() => { overlay.remove(); onDismiss(); }, dur + 16);
-    }, { once: true });
+    }
+
+    overlay.addEventListener('click', dismiss, { once: true });
+
+    // Double rAF ensures the transition fires after paint
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        overlay.querySelector('.card-reveal-dialog').classList.add('entered');
+        // Play outcome sound once the card "lands"
+        setTimeout(() => isDupe ? SoundEngine.cardRevealBust() : SoundEngine.cardRevealGood(), dur);
+        const bar = overlay.querySelector('.reveal-progress-bar');
+        if (bar) bar.classList.add('draining');
+        autoTimer = setTimeout(dismiss, timeoutMs);
+    }));
 }
 
 function animateDiscardFly(callback) {
@@ -1421,7 +1450,8 @@ function makeCardHTML(card, dealt = true) {
     if (card.isReceived) extra += ' received-card';
     const cls = `playing-card ${card.type}${extra}${dealt ? ' dealt' : ''}`;
     const corner = card.type === 'number' ? `<span class="card-corner">${card.value}</span>` : '';
-    return `<div class="${cls}" title="${cardTitle(card)}">${corner}<span class="card-value-main">${card.symbol}</span></div>`;
+    const dataValue = card.type === 'number' ? ` data-value="${card.value}"` : '';
+    return `<div class="${cls}"${dataValue} data-card-id="${card.id}" title="${cardTitle(card)}">${corner}<span class="card-value-main">${card.symbol}</span></div>`;
 }
 
 function cardTitle(card) {
@@ -1700,15 +1730,18 @@ function showActionModal(player, actionCard) {
     const titles = { Freeze: 'FREEZE', FlipThree: 'FLIP THREE', SecondChance: 'SECOND CHANCE' };
     const bodies = {
         Freeze: 'Target player immediately banks their score and exits this round.',
-        FlipThree: 'Target player must draw 3 forced cards.',
+        FlipThree: 'Target player must draw 3 forced cards. You may target yourself.',
         SecondChance: 'You already hold Second Chance — choose a player to give it to.',
     };
     document.getElementById('sim-modal-title').textContent = titles[actionCard.name] || actionCard.name;
     document.getElementById('sim-modal-body').textContent = bodies[actionCard.name] || '';
     const tgts = document.getElementById('sim-modal-targets');
-    tgts.innerHTML = gameState.players.filter(p => p.idx !== player.idx && isPlayerActive(p)).map(p => `
+    const isFlipThreeModal = actionCard.name === 'FlipThree';
+    tgts.innerHTML = gameState.players
+        .filter(p => (isFlipThreeModal || p.idx !== player.idx) && isPlayerActive(p))
+        .map(p => `
         <button class="target-btn" data-idx="${p.idx}">
-            <span>${p.isHuman ? '▸' : '◦'} ${p.name}</span>
+            <span>${p.isHuman ? '▸' : '◦'} ${p.name}${p.idx === player.idx ? ' (YOU)' : ''}</span>
             <span style="color:var(--gold)">${computeRoundScore(p)} pts</span>
         </button>`).join('');
     tgts.querySelectorAll('.target-btn').forEach(btn =>
