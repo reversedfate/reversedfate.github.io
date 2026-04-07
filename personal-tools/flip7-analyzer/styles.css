@@ -1515,6 +1515,12 @@ a:hover { color: var(--red); }
     flex-wrap: wrap;
 }
 
+.trk-stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
 .trk-stat-lbl {
     font-family: var(--font-mono);
     font-size: 9px;
