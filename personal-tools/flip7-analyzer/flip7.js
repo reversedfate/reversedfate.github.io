@@ -1,0 +1,2047 @@
+/* ══════════════════════════════════════════════════════════════════
+   FLIP 7 ANALYZER  ·  Noir Casino Data Terminal
+   ──────────────────────────────────────────────────────────────────
+   §1  Constants & Deck
+   §2  State
+   §3  Probability Engine
+   §4  Game Engine   ← Bug fixes: turn structure, x2 scoring, first-turn
+   §5  AI Strategy
+   §6  Tab Router
+   §7  Simulator UI
+   §8  Optimal Play Analyzer UI
+   §9  Card Tracker UI  ← Bug fix: SVG distribution chart
+   §10 Init
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ══════════════════════════════════════════════════════════════════
+   §1  CONSTANTS & DECK
+   ══════════════════════════════════════════════════════════════════ */
+
+const WIN_TARGET  = 200;
+const FLIP7_BONUS = 15;
+const FLIP7_COUNT = 7;
+
+// Simulator configuration — persists across games
+const simConfig = {
+    autoplay:    true,
+    vizSpeed:    'normal',  // 'instant' | 'fast' | 'normal' | 'slow'
+    animations:  true,
+    sounds:      true,
+    playerCount: 2,
+    deckCount:   1,         // 1–4 decks shuffled together
+};
+
+function getVizDelay() {
+    switch (simConfig.vizSpeed) {
+        case 'instant': return 0;
+        case 'fast':    return 180;
+        case 'normal':  return 520;
+        case 'slow':    return 1300;
+        default:        return 520;
+    }
+}
+
+// Animation duration for UI effects — capped at 200ms even on "slow"
+function getAnimDuration() {
+    if (!simConfig.animations) return 0;
+    switch (simConfig.vizSpeed) {
+        case 'instant': return 0;
+        case 'fast':    return 55;
+        case 'normal':  return 120;
+        case 'slow':    return 200;
+        default:        return 120;
+    }
+}
+
+const AI_LEVEL_DESCS = {
+    easy:   'Random decisions based on score thresholds — loose and unpredictable',
+    medium: 'Uses bust probability and expected value to guide decisions',
+    hard:   'Adapts risk tolerance to score deficit, tracks opponents chasing Flip 7',
+};
+
+const MODIFIER_DEFS = [
+    { symbol: '+2',  value: 2,  isX2: false, count: 1 },
+    { symbol: '+4',  value: 4,  isX2: false, count: 1 },
+    { symbol: '+6',  value: 6,  isX2: false, count: 1 },
+    { symbol: '+8',  value: 8,  isX2: false, count: 2 },
+    { symbol: '+10', value: 10, isX2: false, count: 1 },
+    { symbol: 'x2',  value: 0,  isX2: true,  count: 1 },
+];
+
+const ACTION_DEFS = [
+    { name: 'Freeze',       symbol: 'FRZ', count: 3 },
+    { name: 'FlipThree',    symbol: 'F3',  count: 3 },
+    { name: 'SecondChance', symbol: 'SC',  count: 3 },
+];
+
+function buildDeck() {
+    const cards = [];
+    let id = 0;
+    for (let v = 0; v <= 12; v++) {
+        const count = v === 0 ? 1 : v;
+        for (let c = 0; c < count; c++)
+            cards.push({ id: id++, type: 'number', value: v, symbol: String(v), name: null, isX2: false });
+    }
+    for (const def of MODIFIER_DEFS)
+        for (let c = 0; c < def.count; c++)
+            cards.push({ id: id++, type: 'modifier', value: def.value, symbol: def.symbol, name: null, isX2: def.isX2 });
+    for (const def of ACTION_DEFS)
+        for (let c = 0; c < def.count; c++)
+            cards.push({ id: id++, type: 'action', value: 0, symbol: def.symbol, name: def.name, isX2: false });
+    return cards; // 79 + 7 + 9 = 95
+}
+
+const FULL_DECK = buildDeck();
+
+
+/* ══════════════════════════════════════════════════════════════════
+   §2  STATE
+   ══════════════════════════════════════════════════════════════════ */
+
+const gameState = {
+    phase: 'setup',
+    round: 0,
+    deck: [],             // remaining draw pile
+    discardThisRound: [], // drawn this round (reshuffled back at round start)
+    players: [],
+    dealerIndex: 0,
+    currentDealTarget: 0,
+    actionPending: null,
+    flipThreeState: null,
+    roundEndReason: '',
+    log: [],
+    aiTimer: null,
+};
+
+const analyzerState = {
+    handNumbers:   [],
+    handModifiers: [],
+    handActions:   [],
+    deckMode:      'full',   // 'full' | 'game' | 'tracker'
+    showCounts:    false,
+    evBreakdownOpen: false,
+};
+
+// Count-based card tracker state (replaces seenCardIds Set)
+const trackerState = {
+    numDecks: 1,
+    drawn: {
+        numbers:   { 0:0, 1:0, 2:0, 3:0, 4:0, 5:0, 6:0, 7:0, 8:0, 9:0, 10:0, 11:0, 12:0 },
+        modifiers: { '+2':0, '+4':0, '+6':0, '+8':0, '+10':0, 'x2':0 },
+        // +8 has base count 2 per deck; others 1 per deck
+        actions:   { 'Freeze':0, 'FlipThree':0, 'SecondChance':0 },
+    },
+};
+
+function makePlayer(idx, name, isHuman, aiDifficulty) {
+    return {
+        idx, name, isHuman, aiDifficulty,
+        hand: [], numberCards: [], modifierCards: [], actionCards: [],
+        frozen: false, stayed: false, busted: false, hasFlip7: false,
+        secondChanceActive: false, roundScore: 0, totalScore: 0,
+    };
+}
+
+function resetGameState() {
+    if (gameState.aiTimer) { clearTimeout(gameState.aiTimer); gameState.aiTimer = null; }
+    Object.assign(gameState, {
+        phase: 'setup', round: 0, deck: [], discardThisRound: [],
+        players: [], dealerIndex: 0, currentDealTarget: 0,
+        actionPending: null, flipThreeState: null, roundEndReason: '', log: [],
+    });
+}
+
+function resetRound() {
+    // Reshuffle this round's drawn cards back into the deck before starting the next round
+    if (gameState.discardThisRound.length > 0) {
+        gameState.deck = shuffle([...gameState.deck, ...gameState.discardThisRound]);
+    }
+    gameState.discardThisRound = [];
+    gameState.actionPending = null;
+    gameState.flipThreeState = null;
+
+    for (const p of gameState.players) {
+        Object.assign(p, {
+            hand: [], numberCards: [], modifierCards: [], actionCards: [],
+            frozen: false, stayed: false, busted: false, hasFlip7: false,
+            secondChanceActive: false, roundScore: 0,
+        });
+    }
+
+    if (gameState.round > 1)
+        gameState.dealerIndex = (gameState.dealerIndex + 1) % gameState.players.length;
+
+    // ✅ BUG FIX 3: currentDealTarget starts AT dealerIndex+1, so with dealerIndex = n-1
+    // player 0 (human) is always dealt first on round 1 (set in startGame below)
+    gameState.currentDealTarget = (gameState.dealerIndex + 1) % gameState.players.length;
+}
+
+
+/* ══════════════════════════════════════════════════════════════════
+   §3  PROBABILITY ENGINE
+   ══════════════════════════════════════════════════════════════════ */
+
+function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+
+function getRemainingDeck(seenIds) {
+    return FULL_DECK.filter(c => !seenIds.has(c.id));
+}
+
+// Base count of a card type in a single deck
+function trkBaseCount(category, key) {
+    if (category === 'numbers') return key === 0 ? 1 : key;
+    if (category === 'modifiers') {
+        const def = MODIFIER_DEFS.find(d => d.symbol === key);
+        return def ? def.count : 0;
+    }
+    if (category === 'actions') {
+        const def = ACTION_DEFS.find(d => d.name === key);
+        return def ? def.count : 0;
+    }
+    return 0;
+}
+
+function trkTotal(category, key) {
+    return trkBaseCount(category, key) * trackerState.numDecks;
+}
+
+function trkLeft(category, key) {
+    const cat = trackerState.drawn[category];
+    return trkTotal(category, key) - (cat[key] ?? 0);
+}
+
+// Rebuild a deck array from tracker remaining counts (for deckMode='tracker')
+function buildTrackerDeck() {
+    const deck = [];
+    let fakeId = 100000;
+    for (let v = 0; v <= 12; v++) {
+        const left = trkLeft('numbers', v);
+        const tmpl = FULL_DECK.find(c => c.type === 'number' && c.value === v);
+        for (let i = 0; i < left; i++) deck.push({ ...tmpl, id: fakeId++ });
+    }
+    for (const def of MODIFIER_DEFS) {
+        const left = trkLeft('modifiers', def.symbol);
+        const tmpl = FULL_DECK.find(c => c.type === 'modifier' && c.symbol === def.symbol);
+        for (let i = 0; i < left; i++) deck.push({ ...tmpl, id: fakeId++ });
+    }
+    for (const def of ACTION_DEFS) {
+        const left = trkLeft('actions', def.name);
+        const tmpl = FULL_DECK.find(c => c.type === 'action' && c.name === def.name);
+        for (let i = 0; i < left; i++) deck.push({ ...tmpl, id: fakeId++ });
+    }
+    return deck;
+}
+
+// Deck used for analyzer EV/bust calculations based on deckMode
+function getAnalyzerDeck() {
+    switch (analyzerState.deckMode) {
+        case 'game':
+            if (gameState.phase === 'setup') return [...FULL_DECK]; // no active game
+            return [...gameState.deck];
+        case 'tracker':
+            return buildTrackerDeck();
+        default: // 'full'
+            return [...FULL_DECK];
+    }
+}
+
+// Total drawn count across all categories (for stats display)
+function trkTotalDrawn() {
+    let total = 0;
+    for (const v of Object.values(trackerState.drawn.numbers)) total += v;
+    for (const v of Object.values(trackerState.drawn.modifiers)) total += v;
+    for (const v of Object.values(trackerState.drawn.actions)) total += v;
+    return total;
+}
+
+function trkTotalCards() {
+    return 95 * trackerState.numDecks;
+}
+
+function computeBustProbability(handNumberValues, remaining) {
+    if (!remaining.length || !handNumberValues.length) return 0;
+    const handSet = new Set(handNumberValues);
+    return remaining.filter(c => c.type === 'number' && handSet.has(c.value)).length / remaining.length;
+}
+
+// ✅ BUG FIX 2: x2 multiplies (numbers + flat modifiers), not just numbers
+function applyScoring(numberValues, modifierValues, hasFlip7 = false) {
+    const numSum    = numberValues.reduce((a, b) => a + b, 0);
+    const flatBonus = modifierValues.filter(m => m !== 'x2').reduce((a, b) => a + b, 0);
+    const hasX2     = modifierValues.includes('x2');
+    const subtotal  = numSum + flatBonus;
+    let total = hasX2 ? subtotal * 2 : subtotal;
+    if (hasFlip7) total += FLIP7_BONUS;
+    return total;
+}
+
+function computeExpectedValue(handNumberValues, handModifierValues, remaining) {
+    if (!remaining.length) return { evHit: 0, currentScore: 0 };
+    const currentScore = applyScoring(handNumberValues, handModifierValues, false);
+    let evHit = 0;
+    const n = remaining.length;
+    for (const card of remaining) {
+        const w = 1 / n;
+        let outcome = 0;
+        if (card.type === 'number') {
+            if (handNumberValues.includes(card.value)) {
+                outcome = -currentScore;
+            } else {
+                const nn = [...handNumberValues, card.value];
+                outcome = applyScoring(nn, handModifierValues, nn.length === FLIP7_COUNT) - currentScore;
+            }
+        } else if (card.type === 'modifier') {
+            const nm = [...handModifierValues, card.isX2 ? 'x2' : card.value];
+            outcome = applyScoring(handNumberValues, nm, false) - currentScore;
+        }
+        evHit += w * outcome;
+    }
+    return { evHit, currentScore };
+}
+
+function getRecommendation(bustProb, evHit, handSize) {
+    if (handSize === 0) return { action: 'HIT', cls: 'hit', reasoning: 'Empty hand — draw your first card.' };
+    if (handSize >= 6 && bustProb < 0.5) return { action: 'HIT', cls: 'hit', reasoning: `One number away from Flip 7! +${FLIP7_BONUS} bonus. Bust risk: ${pct(bustProb)}.` };
+    if (bustProb >= 0.45) return { action: 'STAY', cls: 'caution', reasoning: `High bust risk (${pct(bustProb)}). Bank your score now.` };
+    if (evHit > 0) return { action: 'HIT', cls: 'hit', reasoning: `${bustProb < 0.25 ? 'Low' : 'Moderate'} bust risk (${pct(bustProb)}). EV of hitting: +${evHit.toFixed(1)} pts.` };
+    return { action: 'STAY', cls: 'stay', reasoning: `EV of hitting is negative (${evHit.toFixed(1)} pts). Stay and bank.` };
+}
+
+function pct(p) { return Math.round(p * 100) + '%'; }
+
+
+/* ══════════════════════════════════════════════════════════════════
+   §4  GAME ENGINE
+   ══════════════════════════════════════════════════════════════════ */
+
+function drawCard() {
+    if (!gameState.deck.length) return null;
+    const card = gameState.deck.pop();
+    gameState.discardThisRound.push(card);
+    return card;
+}
+
+function isPlayerActive(p) { return !p.frozen && !p.stayed && !p.busted && !p.hasFlip7; }
+
+function nextDealTarget() {
+    const n = gameState.players.length;
+    let next = (gameState.currentDealTarget + 1) % n;
+    for (let t = 0; t < n; t++) {
+        if (isPlayerActive(gameState.players[next])) return next;
+        next = (next + 1) % n;
+    }
+    return -1;
+}
+
+function processCard(player, card) {
+    addLog(`${player.name} draws ${card.symbol}`, player.isHuman ? 'human' : '');
+
+    if (card.type === 'number') {
+        const dupe = player.numberCards.some(c => c.value === card.value);
+        if (dupe) {
+            if (player.secondChanceActive) {
+                player.secondChanceActive = false;
+                player.actionCards = player.actionCards.filter(c => c.name !== 'SecondChance');
+                player.hand = player.hand.filter(c => c.name !== 'SecondChance');
+                addLog(`${player.name} used Second Chance — ${card.symbol} discarded, continues!`, 'action');
+                if (gameState.flipThreeState?.targetIdx === player.idx)
+                    gameState.flipThreeState = null;
+                // Player does NOT stay — they continue playing normally
+                return 'second-chance';
+            }
+            // Show the bust card in hand (displayed red)
+            player.hand.push({ ...card, isBust: true });
+            player.busted = true;
+            player.roundScore = 0;
+            addLog(`${player.name} BUSTED on ${card.symbol}!`, 'bust');
+            return 'bust';
+        }
+        player.numberCards.push(card);
+        player.hand.push(card);
+        if (player.numberCards.length === FLIP7_COUNT) {
+            player.hasFlip7 = true;
+            addLog(`${player.name} achieved FLIP 7!`, 'flip7');
+            return 'flip7';
+        }
+        return 'ok';
+    }
+
+    if (card.type === 'modifier') {
+        player.modifierCards.push(card);
+        player.hand.push(card);
+        return 'ok';
+    }
+
+    // action
+    player.actionCards.push(card);
+    player.hand.push(card);
+    return 'action:' + card.name;
+}
+
+function resolveAction(srcPlayer, actionCard, targetPlayer) {
+    srcPlayer.actionCards = srcPlayer.actionCards.filter(c => c.id !== actionCard.id);
+    srcPlayer.hand = srcPlayer.hand.filter(c => c.id !== actionCard.id);
+
+    if (actionCard.name === 'Freeze') {
+        SoundEngine.freeze();
+        addLog(`${srcPlayer.name} FROZE ${targetPlayer.name}!`, 'action');
+        targetPlayer.frozen = true;
+        targetPlayer.roundScore = computeRoundScore(targetPlayer);
+        targetPlayer.hand.push({ ...actionCard, isReceived: true });
+        addLog(`${targetPlayer.name} banks ${targetPlayer.roundScore} pts`, 'score');
+        if (targetPlayer.roundScore > 0) floatScorePopup(targetPlayer.idx, targetPlayer.roundScore);
+    } else if (actionCard.name === 'FlipThree') {
+        SoundEngine.flipThree();
+        addLog(`${srcPlayer.name} played FLIP THREE on ${targetPlayer.name}!`, 'action');
+        if (gameState.flipThreeState) gameState.flipThreeState.cardsLeft += 3;
+        else gameState.flipThreeState = { targetIdx: targetPlayer.idx, cardsLeft: 3 };
+    } else if (actionCard.name === 'SecondChance') {
+        SoundEngine.secondChanceGet();
+        addLog(`${srcPlayer.name} gave Second Chance to ${targetPlayer.name}!`, 'action');
+        targetPlayer.secondChanceActive = true;
+        targetPlayer.actionCards.push({ ...actionCard, isReceived: true });
+        targetPlayer.hand.push({ ...actionCard, isReceived: true });
+    }
+}
+
+function computeRoundScore(player) {
+    if (player.busted) return 0;
+    return applyScoring(
+        player.numberCards.map(c => c.value),
+        player.modifierCards.map(c => c.isX2 ? 'x2' : c.value),
+        player.hasFlip7
+    );
+}
+
+function endRound(reason) {
+    if (gameState.phase !== 'playing') return; // guard against double-call
+    gameState.phase = 'round_end';
+    gameState.roundEndReason = reason;
+    for (const p of gameState.players) {
+        p.roundScore = computeRoundScore(p);
+        p.totalScore += p.roundScore;
+        if (!p.busted) {
+            addLog(`${p.name}: +${p.roundScore} → total ${p.totalScore}`, 'score');
+            if (p.roundScore > 0) floatScorePopup(p.idx, p.roundScore);
+        }
+    }
+    const winners = gameState.players.filter(p => p.totalScore >= WIN_TARGET);
+    if (winners.length) {
+        gameState.phase = 'game_over';
+        winners.sort((a, b) => b.totalScore - a.totalScore);
+    }
+}
+
+function addLog(msg, cls = '') { gameState.log.push({ msg, cls }); }
+
+// ✅ BUG FIX 1 — TURN STRUCTURE
+// Each call to dealOneCard() gives exactly ONE card to ONE player, then advances.
+// AI decides to stay BEFORE drawing (not after). After drawing one card, always advance.
+function dealOneCard() {
+    // ── FlipThree forced draws ──
+    if (gameState.flipThreeState) {
+        const ft = gameState.flipThreeState;
+        const target = gameState.players[ft.targetIdx];
+
+        if (!isPlayerActive(target)) { gameState.flipThreeState = null; return true; }
+
+        const card = drawCard();
+        if (!card) { endRound('deck-empty'); return false; }
+        SoundEngine.cardDraw();
+
+        const result = processCard(target, card);
+        ft.cardsLeft--;
+
+        if (result === 'flip7') { SoundEngine.flip7(); gameState.flipThreeState = null; endRound('flip7'); return false; }
+        if (result === 'bust') { SoundEngine.bust(); gameState.flipThreeState = null; return true; }
+        if (result === 'second-chance') { SoundEngine.secondChanceSave(); gameState.flipThreeState = null; return true; }
+
+        if (ft.cardsLeft <= 0) {
+            gameState.flipThreeState = null;
+            // Resolve any Freeze/FlipThree action cards the target holds
+            const pending = target.actionCards.filter(c => c.name === 'Freeze' || c.name === 'FlipThree');
+            if (pending.length && target.isHuman) { queueActionPrompt(target, pending[0]); return 'wait-action'; }
+            if (pending.length) { const t2 = aiChooseTarget(target); if (t2) resolveAction(target, pending[0], t2); }
+        }
+        return true;
+    }
+
+    // ── Check if round is over ──
+    const active = gameState.players.filter(isPlayerActive);
+    if (!active.length) { endRound('all-done'); return false; }
+
+    // Skip inactive players
+    const player = gameState.players[gameState.currentDealTarget];
+    if (!isPlayerActive(player)) {
+        gameState.currentDealTarget = nextDealTarget();
+        if (gameState.currentDealTarget === -1) { endRound('all-done'); return false; }
+        return true;
+    }
+
+    // ── Human turn: wait for input ──
+    if (player.isHuman) return 'wait-human';
+
+    // ── AI turn: decide BEFORE drawing ──
+    const decision = aiDecide(player);
+    if (decision.action === 'stay') {
+        SoundEngine.aiStay();
+        player.stayed = true;
+        player.roundScore = computeRoundScore(player);
+        addLog(`${player.name} stays (${player.roundScore} pts)`, 'stay');
+        addLog(decision.reasoning, 'reasoning');
+        gameState.currentDealTarget = nextDealTarget();
+        if (gameState.currentDealTarget === -1) { endRound('all-done'); return false; }
+        return true;
+    }
+
+    // AI hits — draw exactly ONE card, then advance
+    addLog(decision.reasoning, 'reasoning');
+    const card = drawCard();
+    if (!card) { endRound('deck-empty'); return false; }
+    SoundEngine.cardDraw();
+    const result = processCard(player, card);
+
+    if (result === 'flip7') { SoundEngine.flip7(); endRound('flip7'); return false; }
+
+    if (result === 'bust') { SoundEngine.bust(); gameState.currentDealTarget = nextDealTarget(); if (gameState.currentDealTarget === -1) { endRound('all-done'); return false; } return true; }
+    if (result === 'second-chance') { SoundEngine.secondChanceSave(); gameState.currentDealTarget = nextDealTarget(); if (gameState.currentDealTarget === -1) { endRound('all-done'); return false; } return true; }
+
+    if (result.startsWith('action:')) {
+        const name = result.split(':')[1];
+        const ac = player.actionCards[player.actionCards.length - 1];
+        if (name === 'SecondChance') {
+            if (player.secondChanceActive) {
+                // Already holding one — give to another (AI gives to lowest-threat target)
+                const t2 = aiChooseTarget(player);
+                if (t2) {
+                    addLog(`${player.name} already has Second Chance — passing it on`, 'reasoning');
+                    resolveAction(player, ac, t2);
+                } else {
+                    // No valid target — discard
+                    player.actionCards = player.actionCards.filter(c => c.id !== ac.id);
+                    player.hand = player.hand.filter(c => c.id !== ac.id);
+                }
+            } else {
+                SoundEngine.secondChanceGet();
+                player.secondChanceActive = true;
+                addLog(`${player.name} holds Second Chance`);
+            }
+        } else {
+            const t2 = aiChooseTarget(player);
+            if (t2) resolveAction(player, ac, t2);
+        }
+    }
+
+    // Always advance after drawing one card
+    gameState.currentDealTarget = nextDealTarget();
+    if (gameState.currentDealTarget === -1) { endRound('all-done'); return false; }
+    return true;
+}
+
+// Human pressed HIT — draw one card, show reveal, then advance turn
+function humanHit() {
+    const player = gameState.players[gameState.currentDealTarget];
+    if (!player?.isHuman || !isPlayerActive(player)) return;
+
+    const card = drawCard();
+    if (!card) { endRound('deck-empty'); renderSimulator(); setTimeout(() => showRoundEnd(), 400); return; }
+
+    SoundEngine.cardDraw();
+
+    showCardReveal(player, card, () => {
+        const result = processCard(player, card);
+        renderSimulator();
+
+        if (result === 'flip7') {
+            SoundEngine.flip7();
+            endRound('flip7');
+            renderSimulator();
+            setTimeout(() => showRoundEnd(), 400);
+            return;
+        }
+
+        if (result === 'second-chance') {
+            SoundEngine.secondChanceSave();
+            gameState.currentDealTarget = nextDealTarget();
+            if (gameState.currentDealTarget === -1) { endRound('all-done'); setTimeout(() => showRoundEnd(), 400); return; }
+            setTimeout(() => continueGame(), 300);
+            return;
+        }
+
+        if (result === 'bust') {
+            gameState.currentDealTarget = nextDealTarget();
+            if (gameState.currentDealTarget === -1) { endRound('all-done'); setTimeout(() => showRoundEnd(), 400); return; }
+            setTimeout(() => continueGame(), 300);
+            return;
+        }
+
+        if (result.startsWith('action:')) {
+            const name = result.split(':')[1];
+            const ac = player.actionCards[player.actionCards.length - 1];
+            if (name === 'SecondChance') {
+                if (player.secondChanceActive) {
+                    queueActionPrompt(player, ac);
+                    return;
+                }
+                SoundEngine.secondChanceGet();
+                player.secondChanceActive = true;
+                addLog('You hold Second Chance — next bust is blocked', 'human');
+                gameState.currentDealTarget = nextDealTarget();
+                if (gameState.currentDealTarget === -1) { endRound('all-done'); setTimeout(() => showRoundEnd(), 400); return; }
+                renderSimulator();
+                setTimeout(() => continueGame(), 300);
+                return;
+            } else {
+                queueActionPrompt(player, ac);
+                return;
+            }
+        }
+
+        // Normal hit — advance to next player
+        gameState.currentDealTarget = nextDealTarget();
+        if (gameState.currentDealTarget === -1) { endRound('all-done'); setTimeout(() => showRoundEnd(), 400); return; }
+        setTimeout(() => continueGame(), 300);
+    });
+}
+
+function humanStay() {
+    const player = gameState.players[gameState.currentDealTarget];
+    if (!player?.isHuman || !isPlayerActive(player)) return;
+
+    SoundEngine.stay();
+    player.stayed = true;
+    player.roundScore = computeRoundScore(player);
+    addLog(`You stay with ${player.roundScore} pts`, 'human');
+
+    gameState.currentDealTarget = nextDealTarget();
+    renderSimulator();
+    if (gameState.currentDealTarget === -1) { endRound('all-done'); showRoundEnd(); return; }
+    setTimeout(() => continueGame(), 300);
+}
+
+function queueActionPrompt(player, actionCard) {
+    const validTargets = gameState.players.filter(p => p.idx !== player.idx && isPlayerActive(p));
+    if (!validTargets.length) {
+        // No valid targets — discard the action card silently and advance
+        addLog(`${player.name}: no valid targets for ${actionCard.name} — discarded`, 'action');
+        player.actionCards = player.actionCards.filter(c => c.id !== actionCard.id);
+        player.hand = player.hand.filter(c => c.id !== actionCard.id);
+        gameState.currentDealTarget = nextDealTarget();
+        renderSimulator();
+        if (gameState.currentDealTarget === -1) { endRound('all-done'); setTimeout(() => showRoundEnd(), 400); return; }
+        setTimeout(() => continueGame(), 400);
+        return;
+    }
+    gameState.actionPending = { sourceIdx: player.idx, card: actionCard };
+    renderSimulator();
+    showActionModal(player, actionCard);
+}
+
+function resolveActionChoice(targetIdx) {
+    const pending = gameState.actionPending;
+    if (!pending) return;
+    if (targetIdx === pending.sourceIdx) return; // no self-targeting
+    gameState.actionPending = null;
+    hideActionModal();
+
+    const src = gameState.players[pending.sourceIdx];
+    const tgt = gameState.players[targetIdx];
+    resolveAction(src, pending.card, tgt);
+    renderSimulator();
+
+    // After action resolves, advance human's turn in rotation
+    gameState.currentDealTarget = nextDealTarget();
+    if (gameState.currentDealTarget === -1) { endRound('all-done'); setTimeout(() => showRoundEnd(), 400); return; }
+    setTimeout(() => continueGame(), 500);
+}
+
+function continueGame() {
+    if (gameState.phase !== 'playing') return;
+
+    // If autoplay is off and it's a non-forced AI turn, pause for manual trigger
+    if (!simConfig.autoplay && !gameState.flipThreeState) {
+        const cur = gameState.players[gameState.currentDealTarget];
+        if (cur && !cur.isHuman && isPlayerActive(cur)) {
+            renderSimulator(); // shows NEXT AI MOVE button
+            return;
+        }
+    }
+
+    const result = dealOneCard();
+    if (result === false) { renderSimulator(); setTimeout(() => showRoundEnd(), 600); return; }
+    if (result === 'wait-human' || result === 'wait-action') { renderSimulator(); return; }
+    renderSimulator();
+
+    const delay = getVizDelay();
+    if (delay === 0) {
+        continueGame();
+    } else {
+        gameState.aiTimer = setTimeout(() => continueGame(), delay);
+    }
+}
+
+function startGame(playerCount, aiDifficulty) {
+    resetGameState();
+    // Build combined deck with unique IDs across all copies
+    const combined = [];
+    let newId = 0;
+    for (let d = 0; d < simConfig.deckCount; d++)
+        for (const card of FULL_DECK)
+            combined.push({ ...card, id: newId++ });
+    gameState.deck = shuffle(combined);
+    gameState.phase = 'playing';
+    gameState.round = 1;
+
+    for (let i = 0; i < playerCount; i++)
+        gameState.players.push(makePlayer(i, i === 0 ? 'YOU' : `CPU ${i}`, i === 0, aiDifficulty));
+
+    // ✅ BUG FIX 3: dealer = last player so human (idx 0) is dealt to first
+    gameState.dealerIndex = playerCount - 1;
+
+    addLog(`Game started — first to ${WIN_TARGET} wins`, 'round');
+    addLog(`Round 1`, 'round');
+    resetRound();
+    renderSimulator();
+    setTimeout(() => continueGame(), 600);
+}
+
+function startNextRound() {
+    if (gameState.aiTimer) { clearTimeout(gameState.aiTimer); gameState.aiTimer = null; }
+    gameState.round++;
+    gameState.phase = 'playing';
+    addLog(`Round ${gameState.round}`, 'round');
+    animateShuffle(() => {
+        resetRound();
+        renderSimulator();
+        setTimeout(() => continueGame(), 200);
+    });
+}
+
+
+/* ══════════════════════════════════════════════════════════════════
+   §5  AI STRATEGY
+   ══════════════════════════════════════════════════════════════════ */
+
+function aiDecide(player) {
+    const diff = player.aiDifficulty;
+    if (diff === 'easy') return aiDecideEasy(player);
+    if (diff === 'hard') return aiDecideHard(player);
+    return aiDecideMedium(player);
+}
+
+function aiDecideEasy(player) {
+    const score = computeRoundScore(player);
+    if (score >= 20 && Math.random() < 0.65)
+        return { action: 'stay', reasoning: `Score ${score} looks good enough — banking.` };
+    if (score >= 12 && Math.random() < 0.4)
+        return { action: 'stay', reasoning: `${score} pts — randomly decided to stop.` };
+    return { action: 'hit', reasoning: `Score ${score} — taking a risk.` };
+}
+
+function aiDecideMedium(player) {
+    const remaining = [...gameState.deck];
+    const bp = computeBustProbability(player.numberCards.map(c => c.value), remaining);
+    if (bp > 0.30)
+        return { action: 'stay', reasoning: `Bust risk ${pct(bp)} > 30% — not worth it.` };
+    if (player.numberCards.length >= 6)
+        return { action: 'hit', reasoning: `${player.numberCards.length} numbers — Flip 7 within reach!` };
+    const { evHit } = computeExpectedValue(
+        player.numberCards.map(c => c.value),
+        player.modifierCards.map(c => c.isX2 ? 'x2' : c.value),
+        remaining
+    );
+    return evHit > 0
+        ? { action: 'hit', reasoning: `EV +${evHit.toFixed(1)} pts, bust risk ${pct(bp)} — hitting.` }
+        : { action: 'stay', reasoning: `EV ${evHit.toFixed(1)} is negative — banking ${computeRoundScore(player)} pts.` };
+}
+
+function aiDecideHard(player) {
+    const remaining = [...gameState.deck];
+    const numVals = player.numberCards.map(c => c.value);
+    const modVals = player.modifierCards.map(c => c.isX2 ? 'x2' : c.value);
+    const bp = computeBustProbability(numVals, remaining);
+    const leaderScore = Math.max(...gameState.players.map(p => p.totalScore));
+    const deficit = leaderScore - player.totalScore;
+    const tolerance = deficit > 50 ? 0.45 : 0.28;
+    if (bp > tolerance)
+        return { action: 'stay', reasoning: `Bust ${pct(bp)} > tolerance ${pct(tolerance)} (deficit ${deficit}) — banking ${computeRoundScore(player)} pts.` };
+    if (player.numberCards.length >= 6)
+        return { action: 'hit', reasoning: `${player.numberCards.length} numbers — going for Flip 7!` };
+    const anyChasing = gameState.players.some(p => p !== player && isPlayerActive(p) && p.numberCards.length >= 5);
+    if (anyChasing && player.numberCards.length >= 4 && bp < 0.4)
+        return { action: 'hit', reasoning: `Opponent near Flip 7 — must keep pressure (bust ${pct(bp)}).` };
+    const { evHit } = computeExpectedValue(numVals, modVals, remaining);
+    return evHit > 0
+        ? { action: 'hit', reasoning: `EV +${evHit.toFixed(1)}, ${deficit > 0 ? deficit + ' pts behind' : 'leading'} — hitting.` }
+        : { action: 'stay', reasoning: `EV ${evHit.toFixed(1)} negative — banking ${computeRoundScore(player)} pts.` };
+}
+
+function aiChooseTarget(src) {
+    const others = gameState.players.filter(p => p.idx !== src.idx && isPlayerActive(p));
+    if (!others.length) return null;
+    return others.reduce((best, p) => computeRoundScore(p) > computeRoundScore(best) ? p : best, others[0]);
+}
+
+
+/* ══════════════════════════════════════════════════════════════════
+   §6  TAB ROUTER
+   ══════════════════════════════════════════════════════════════════ */
+
+let activeTab = 'simulator';
+
+function initTabs() {
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => showTab(btn.dataset.tab));
+    });
+}
+
+function showTab(name) {
+    activeTab = name;
+    document.querySelectorAll('.tab-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.tab === name);
+        b.setAttribute('aria-selected', b.dataset.tab === name ? 'true' : 'false');
+    });
+    document.querySelectorAll('.tab-panel').forEach(p => {
+        p.classList.toggle('active', p.id === 'tab-' + name);
+        p.classList.toggle('hidden', p.id !== 'tab-' + name);
+    });
+    if (name === 'analyzer') renderAnalyzer();
+    if (name === 'tracker') renderTracker();
+}
+
+
+/* ══════════════════════════════════════════════════════════════════
+   §6a  SOUND ENGINE  (Web Audio API — procedural, no files)
+   ══════════════════════════════════════════════════════════════════ */
+
+const SoundEngine = (() => {
+    let _ctx = null;
+
+    function ac() {
+        if (!_ctx) _ctx = new (window.AudioContext || window.webkitAudioContext)();
+        if (_ctx.state === 'suspended') _ctx.resume();
+        return _ctx;
+    }
+
+    function go(fn) {
+        if (!simConfig.sounds) return;
+        try { fn(ac()); } catch (e) {}
+    }
+
+    // ── Primitive builders ──
+    function osc(c, type, freqSpec, t, dur, vol) {
+        const o = c.createOscillator();
+        o.type = type;
+        if (Array.isArray(freqSpec)) {
+            o.frequency.setValueAtTime(freqSpec[0], t);
+            o.frequency.exponentialRampToValueAtTime(freqSpec[1], t + dur);
+        } else {
+            o.frequency.value = freqSpec;
+        }
+        const g = c.createGain();
+        g.gain.setValueAtTime(vol, t);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        o.connect(g); g.connect(c.destination);
+        o.start(t); o.stop(t + dur + 0.02);
+    }
+    function sine(c, f, t, dur, vol = 0.28) { osc(c, 'sine',     f, t, dur, vol); }
+    function tri (c, f, t, dur, vol = 0.28) { osc(c, 'triangle', f, t, dur, vol); }
+    function saw (c, f, t, dur, vol = 0.22) { osc(c, 'sawtooth', f, t, dur, vol); }
+    function sqr (c, f, t, dur, vol = 0.18) { osc(c, 'square',   f, t, dur, vol); }
+
+    function noise(c, t, dur, vol, fc = 3000, Q = 2) {
+        const len = Math.ceil(c.sampleRate * (dur + 0.02));
+        const buf = c.createBuffer(1, len, c.sampleRate);
+        const d   = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+        const src = c.createBufferSource(); src.buffer = buf;
+        const flt = c.createBiquadFilter(); flt.type = 'bandpass';
+        flt.frequency.value = fc; flt.Q.value = Q;
+        const g = c.createGain();
+        g.gain.setValueAtTime(vol, t);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        src.connect(flt); flt.connect(g); g.connect(c.destination);
+        src.start(t); src.stop(t + dur + 0.02);
+    }
+
+    // ── Named sounds ──
+
+    // Card sliding off the deck — paper swish
+    function cardDraw() {
+        go(c => {
+            const t = c.currentTime;
+            noise(c, t,        0.06, 0.18, 4000, 5);
+            noise(c, t + 0.02, 0.05, 0.10, 1400, 2);
+        });
+    }
+
+    // Non-duplicate card settles — soft positive tick
+    function cardRevealGood() {
+        go(c => { tri(c, 1100, c.currentTime, 0.14, 0.13); });
+    }
+
+    // Duplicate card hits table — heavy thud + dissonant buzz
+    function cardRevealBust() {
+        go(c => {
+            const t = c.currentTime;
+            sine(c, [130, 45], t, 0.28, 0.38);
+            saw (c, [190, 80], t, 0.22, 0.14);
+        });
+    }
+
+    // Player stays — two rising casino chip sounds
+    function stay() {
+        go(c => {
+            const t = c.currentTime;
+            tri(c, 523, t,        0.18, 0.30);
+            tri(c, 659, t + 0.13, 0.20, 0.28);
+        });
+    }
+
+    // AI stays — quieter single tone, less intrusive
+    function aiStay() {
+        go(c => { tri(c, 440, c.currentTime, 0.10, 0.11); });
+    }
+
+    // Bust confirmation (AI bust, or end of human reveal sequence)
+    function bust() {
+        go(c => {
+            const t = c.currentTime;
+            saw(c, [220, 55], t, 0.42, 0.28);
+            sine(c, [150, 38], t, 0.35, 0.18);
+        });
+    }
+
+    // 7 ascending notes + sparkle chord
+    function flip7() {
+        go(c => {
+            const t = c.currentTime;
+            const steps = [0, 4, 7, 12, 16, 19, 24];
+            steps.forEach((s, i) =>
+                tri(c, 261.63 * Math.pow(2, s / 12), t + i * 0.075, 0.22, 0.22));
+            // sparkle
+            [1046.5, 1318.5, 1567.98].forEach(f =>
+                sine(c, f, t + 7 * 0.075, 0.45, 0.13));
+        });
+    }
+
+    // Ice-crystal ping with shimmer overtones
+    function freeze() {
+        go(c => {
+            const t = c.currentTime;
+            sine(c, 1760, t,        0.55, 0.28);
+            sine(c, 2349, t + 0.04, 0.40, 0.14);
+            sine(c,  880, t + 0.09, 0.50, 0.11);
+        });
+    }
+
+    // Three fast staccato pops
+    function flipThree() {
+        go(c => {
+            const t = c.currentTime;
+            [360, 500, 700].forEach((f, i) => sqr(c, f, t + i * 0.07, 0.09, 0.17));
+        });
+    }
+
+    // Second Chance blocked a bust — rising protective shimmer
+    function secondChanceSave() {
+        go(c => {
+            const t = c.currentTime;
+            sine(c, [280, 560], t,        0.20, 0.26);
+            sine(c, [420, 840], t + 0.06, 0.25, 0.16);
+        });
+    }
+
+    // Just received / picked up Second Chance
+    function secondChanceGet() {
+        go(c => {
+            const t = c.currentTime;
+            tri(c, 880,  t,        0.15, 0.20);
+            tri(c, 1108, t + 0.09, 0.15, 0.14);
+        });
+    }
+
+    // End of round — descending chime
+    function roundEnd() {
+        go(c => {
+            const t = c.currentTime;
+            sine(c, 880, t,        0.40, 0.24);
+            sine(c, 698, t + 0.20, 0.40, 0.18);
+        });
+    }
+
+    // Winner fanfare — ascending heroic phrase
+    function gameOver() {
+        go(c => {
+            const t = c.currentTime;
+            const melody = [
+                [261.63,0], [329.63,0.10], [392,0.20],
+                [523.25,0.36], [392,0.48], [523.25,0.58], [659.25,0.72],
+            ];
+            melody.forEach(([f, dt]) => tri(c, f, t + dt, 0.22, 0.28));
+            // Final chord
+            [523.25, 659.25, 783.99].forEach(f =>
+                sine(c, f, t + 0.95, 0.55, 0.16));
+        });
+    }
+
+    // Riffle shuffle — 5 quick noise bursts
+    function shuffle() {
+        go(c => {
+            const t = c.currentTime;
+            for (let i = 0; i < 5; i++)
+                noise(c, t + i * 0.048, 0.04, 0.20, 1800 + i * 280, 3);
+        });
+    }
+
+    return {
+        cardDraw, cardRevealGood, cardRevealBust,
+        stay, aiStay, bust, flip7,
+        freeze, flipThree, secondChanceSave, secondChanceGet,
+        roundEnd, gameOver, shuffle,
+    };
+})();
+
+
+/* ══════════════════════════════════════════════════════════════════
+   §6b  ANIMATION HELPERS
+   ══════════════════════════════════════════════════════════════════ */
+
+function showCardReveal(player, card, onDismiss) {
+    const dur = getAnimDuration();
+    if (dur === 0) { onDismiss(); return; }
+
+    const isDupe = card.type === 'number' && player.numberCards.some(c => c.value === card.value);
+    const label = isDupe
+        ? 'DUPLICATE — BUST!'
+        : card.type === 'modifier' ? (card.isX2 ? '×2 MULTIPLIER' : card.symbol + ' MODIFIER')
+        : card.type === 'action'   ? card.name.toUpperCase()
+        : 'NUMBER ' + card.value;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'card-reveal-overlay';
+    overlay.style.setProperty('--reveal-dur', dur + 'ms');
+    const corner = card.type === 'number' ? `<span class="card-corner">${card.value}</span>` : '';
+    const typeClass = card.type + (isDupe ? ' bust-card' : '');
+    overlay.innerHTML = `
+        <div class="card-reveal-dialog${isDupe ? ' reveal-bad' : ''}">
+            <div class="reveal-card-wrap">
+                <div class="playing-card ${typeClass}">
+                    ${corner}<span class="card-value-main">${card.symbol}</span>
+                </div>
+                ${isDupe ? '<div class="reveal-cross">✕</div>' : ''}
+            </div>
+            <div class="reveal-label">${label}</div>
+            <div class="reveal-hint">CLICK TO CONTINUE</div>
+        </div>`;
+
+    (document.getElementById('sim-game') || document.body).appendChild(overlay);
+
+    // Double rAF ensures the transition fires after paint
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        overlay.querySelector('.card-reveal-dialog').classList.add('entered');
+        // Play outcome sound once the card "lands"
+        setTimeout(() => isDupe ? SoundEngine.cardRevealBust() : SoundEngine.cardRevealGood(), dur);
+    }));
+
+    overlay.addEventListener('click', () => {
+        const dialog = overlay.querySelector('.card-reveal-dialog');
+        const playerHandEl = document.querySelector(`[data-player-idx="${player.idx}"] .player-hand`);
+        const targetRect = playerHandEl?.getBoundingClientRect();
+        const dialogRect = dialog.getBoundingClientRect();
+
+        if (targetRect) {
+            const dx = (targetRect.left + targetRect.width / 2) - (dialogRect.left + dialogRect.width / 2);
+            const dy = (targetRect.top  + targetRect.height / 2) - (dialogRect.top  + dialogRect.height / 2);
+            dialog.style.transition = `transform ${dur}ms cubic-bezier(0.4,0,0.2,1), opacity ${Math.round(dur * 0.7)}ms ease`;
+            dialog.style.transform  = `translate(${dx}px, ${dy}px) scale(0.06)`;
+            dialog.style.opacity    = '0';
+        } else {
+            dialog.style.transition = `opacity ${dur}ms ease, transform ${dur}ms ease`;
+            dialog.style.transform  = 'scale(0.1)';
+            dialog.style.opacity    = '0';
+        }
+        setTimeout(() => { overlay.remove(); onDismiss(); }, dur + 16);
+    }, { once: true });
+}
+
+function animateDiscardFly(callback) {
+    const dur = getAnimDuration();
+    if (dur === 0) { callback(); return; }
+
+    const discardBtn = document.getElementById('sim-discard-btn');
+    if (!discardBtn) { callback(); return; }
+
+    const cardEls = Array.from(document.querySelectorAll('.player-card .playing-card')).slice(0, 30);
+    if (!cardEls.length) { callback(); return; }
+
+    const tgt = discardBtn.getBoundingClientRect();
+    const tx = tgt.left + tgt.width  / 2;
+    const ty = tgt.top  + tgt.height / 2;
+
+    const clones = cardEls.map(card => {
+        const r = card.getBoundingClientRect();
+        const cl = card.cloneNode(true);
+        Object.assign(cl.style, {
+            position: 'fixed', left: r.left + 'px', top: r.top + 'px',
+            width: r.width + 'px', height: r.height + 'px',
+            zIndex: 150, margin: '0', pointerEvents: 'none', transition: 'none',
+        });
+        document.body.appendChild(cl);
+        return { el: cl, r };
+    });
+
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        clones.forEach(({ el, r }, i) => {
+            const stagger = i * Math.min(8, dur / clones.length);
+            const dx = tx - (r.left + r.width  / 2);
+            const dy = ty - (r.top  + r.height / 2);
+            const rot = (Math.random() - 0.5) * 40;
+            el.style.transition = `transform ${dur}ms cubic-bezier(0.3,0,1,1) ${stagger}ms, opacity ${Math.round(dur * 0.5)}ms ease ${stagger + Math.round(dur * 0.5)}ms`;
+            el.style.transform  = `translate(${dx}px,${dy}px) scale(0.25) rotate(${rot}deg)`;
+            el.style.opacity    = '0';
+        });
+        const total = dur + clones.length * Math.min(8, dur / clones.length) + 40;
+        setTimeout(() => { clones.forEach(c => c.el.remove()); callback(); }, total);
+    }));
+}
+
+function animateShuffle(callback) {
+    const dur = getAnimDuration();
+    SoundEngine.shuffle();
+    if (dur === 0) { callback(); return; }
+
+    const container = document.getElementById('sim-game') || document.body;
+    const overlay = document.createElement('div');
+    overlay.className = 'shuffle-overlay';
+    overlay.style.setProperty('--sh-dur', dur + 'ms');
+    overlay.innerHTML = `
+        <div class="shuffle-content">
+            <div class="shuffle-cards">
+                ${[0,1,2,3,4].map(i => `<div class="shuffle-card" style="--si:${i}"></div>`).join('')}
+            </div>
+            <div class="shuffle-label">SHUFFLING DECK…</div>
+        </div>`;
+    container.appendChild(overlay);
+
+    // Play for 2× dur, then fade out for 1× dur
+    setTimeout(() => overlay.classList.add('shuffle-fadeout'), dur * 2);
+    setTimeout(() => { overlay.remove(); callback(); }, dur * 3);
+}
+
+
+/* ══════════════════════════════════════════════════════════════════
+   §7  SIMULATOR UI
+   ══════════════════════════════════════════════════════════════════ */
+
+// ── Visual pile button (stacked card silhouettes + count) ──
+function renderPileBtn(id, label, count, total) {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    const filled = total > 0 ? Math.ceil(count / total * 3) : 0; // 0–3 visible ghosts
+    const ghosts = [0, 1, 2].map(i =>
+        `<div class="pile-ghost${i < filled ? '' : ' pile-ghost-empty'}"></div>`
+    ).join('');
+    btn.innerHTML = `<div class="pile-visual">${ghosts}<span class="pile-count-badge">${count}</span></div><span class="pile-label-text">${label}</span>`;
+}
+
+// ── Turn order strip ──
+function renderTurnStrip() {
+    const strip = document.getElementById('sim-turn-strip');
+    if (!strip) return;
+    if (gameState.phase !== 'playing' && gameState.phase !== 'round_end') { strip.innerHTML = ''; return; }
+    strip.innerHTML = gameState.players.map((p, i) => {
+        const isCurrent  = p.idx === gameState.currentDealTarget && gameState.phase === 'playing';
+        const isInactive = !isPlayerActive(p);
+        const cls = ['turn-token',
+            isCurrent  ? 'tok-active'   : '',
+            isInactive ? 'tok-inactive' : '',
+            p.isHuman  ? 'tok-human'    : '',
+        ].filter(Boolean).join(' ');
+        return `${i > 0 ? '<span class="turn-arrow">›</span>' : ''}
+                <div class="${cls}" title="${p.name}">${p.name.charAt(0)}</div>`;
+    }).join('');
+}
+
+// ── Floating "+X pts" score popup ──
+function floatScorePopup(playerIdx, amount) {
+    if (amount <= 0) return;
+    const el = document.querySelector(`[data-player-idx="${playerIdx}"]`);
+    if (!el) return;
+    const popup = document.createElement('div');
+    popup.className = 'score-popup';
+    popup.textContent = '+' + amount;
+    el.appendChild(popup);
+    popup.addEventListener('animationend', () => popup.remove(), { once: true });
+}
+
+function initSimulator() {
+    // ── Player count stepper ──
+    const countDisplay = document.getElementById('count-display');
+    function updateCountDisplay() {
+        if (countDisplay) countDisplay.textContent = simConfig.playerCount;
+    }
+    document.getElementById('count-dec')?.addEventListener('click', () => {
+        if (simConfig.playerCount > 2) { simConfig.playerCount--; updateCountDisplay(); }
+    });
+    document.getElementById('count-inc')?.addEventListener('click', () => {
+        if (simConfig.playerCount < 20) { simConfig.playerCount++; updateCountDisplay(); }
+    });
+
+    // ── Deck count stepper ──
+    const deckDisplay = document.getElementById('deck-count-display');
+    function updateDeckDisplay() {
+        if (deckDisplay) deckDisplay.textContent = simConfig.deckCount;
+    }
+    document.getElementById('deck-dec')?.addEventListener('click', () => {
+        if (simConfig.deckCount > 1) { simConfig.deckCount--; updateDeckDisplay(); }
+    });
+    document.getElementById('deck-inc')?.addEventListener('click', () => {
+        if (simConfig.deckCount < 4) { simConfig.deckCount++; updateDeckDisplay(); }
+    });
+
+    // ── AI level description ──
+    const aiSelect = document.getElementById('sim-ai-level');
+    const aiDesc   = document.getElementById('sim-ai-desc');
+    function updateAiDesc() {
+        if (aiDesc) aiDesc.textContent = AI_LEVEL_DESCS[aiSelect?.value] || '';
+    }
+    aiSelect?.addEventListener('change', updateAiDesc);
+    updateAiDesc();
+
+    // ── Start / Reset buttons ──
+    document.getElementById('sim-start-btn').addEventListener('click', () => {
+        const aiLevel = document.getElementById('sim-ai-level').value;
+        document.getElementById('sim-start-btn').classList.add('hidden');
+        document.getElementById('sim-reset-btn').classList.remove('hidden');
+        document.getElementById('sim-game').classList.remove('hidden');
+        startGame(simConfig.playerCount, aiLevel);
+    });
+
+    document.getElementById('sim-reset-btn').addEventListener('click', () => {
+        if (gameState.aiTimer) clearTimeout(gameState.aiTimer);
+        hideActionModal();
+        ['sim-round-end','sim-game-over','sim-ai-controls'].forEach(id => document.getElementById(id)?.classList.add('hidden'));
+        document.getElementById('sim-game').classList.add('hidden');
+        document.getElementById('sim-start-btn').classList.remove('hidden');
+        document.getElementById('sim-reset-btn').classList.add('hidden');
+        resetGameState();
+    });
+
+    document.getElementById('sim-hit-btn').addEventListener('click', humanHit);
+    document.getElementById('sim-stay-btn').addEventListener('click', humanStay);
+    document.getElementById('sim-next-round-btn').addEventListener('click', () => {
+        document.getElementById('sim-round-end').classList.add('hidden');
+        startNextRound();
+    });
+    document.getElementById('sim-next-round-ctrl-btn')?.addEventListener('click', () => {
+        document.getElementById('sim-round-end').classList.add('hidden');
+        startNextRound();
+    });
+    document.getElementById('sim-round-end-close')?.addEventListener('click', () => {
+        document.getElementById('sim-round-end').classList.add('hidden');
+    });
+    document.getElementById('sim-round-end')?.addEventListener('click', e => {
+        if (e.target === document.getElementById('sim-round-end'))
+            document.getElementById('sim-round-end').classList.add('hidden');
+    });
+    document.getElementById('sim-play-again-btn').addEventListener('click', () => {
+        ['sim-game-over','sim-game'].forEach(id => document.getElementById(id).classList.add('hidden'));
+        document.getElementById('sim-start-btn').classList.remove('hidden');
+        document.getElementById('sim-reset-btn').classList.add('hidden');
+        resetGameState();
+    });
+
+    // ── Pile modals ──
+    document.getElementById('sim-draw-btn').addEventListener('click', () => showPileModal('draw'));
+    document.getElementById('sim-discard-btn').addEventListener('click', () => showPileModal('discard'));
+    document.getElementById('sim-pile-close').addEventListener('click', hidePileModal);
+    document.getElementById('sim-pile-modal').addEventListener('click', e => {
+        if (e.target === document.getElementById('sim-pile-modal')) hidePileModal();
+    });
+
+    // ── AI autoplay toggle ──
+    document.getElementById('sim-autoplay-btn')?.addEventListener('click', () => {
+        simConfig.autoplay = !simConfig.autoplay;
+        const btn = document.getElementById('sim-autoplay-btn');
+        if (btn) {
+            btn.textContent = simConfig.autoplay ? 'AUTOPLAY: ON' : 'AUTOPLAY: OFF';
+            btn.classList.toggle('autoplay-on', simConfig.autoplay);
+            btn.classList.toggle('autoplay-off', !simConfig.autoplay);
+        }
+        renderSimulator();
+        // If we just turned autoplay on and it's AI's turn, resume
+        if (simConfig.autoplay && gameState.phase === 'playing') {
+            if (gameState.aiTimer) clearTimeout(gameState.aiTimer);
+            setTimeout(() => continueGame(), getVizDelay());
+        }
+    });
+
+    // ── Viz speed buttons ──
+    document.querySelectorAll('.speed-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            simConfig.vizSpeed = btn.dataset.speed;
+            document.querySelectorAll('.speed-btn').forEach(b => b.classList.toggle('active', b === btn));
+        });
+    });
+
+    // ── Sound toggle ──
+    document.getElementById('sim-sound-btn')?.addEventListener('click', () => {
+        simConfig.sounds = !simConfig.sounds;
+        const btn = document.getElementById('sim-sound-btn');
+        if (btn) {
+            btn.textContent = simConfig.sounds ? 'SOUNDS: ON' : 'SOUNDS: OFF';
+            btn.classList.toggle('autoplay-on',  simConfig.sounds);
+            btn.classList.toggle('autoplay-off', !simConfig.sounds);
+        }
+    });
+
+    // ── Animations toggle ──
+    document.getElementById('sim-anim-btn')?.addEventListener('click', () => {
+        simConfig.animations = !simConfig.animations;
+        const btn = document.getElementById('sim-anim-btn');
+        if (btn) {
+            btn.textContent = simConfig.animations ? 'ANIMATIONS: ON' : 'ANIMATIONS: OFF';
+            btn.classList.toggle('autoplay-on',  simConfig.animations);
+            btn.classList.toggle('autoplay-off', !simConfig.animations);
+        }
+    });
+
+    // ── Next AI Move button ──
+    document.getElementById('sim-next-ai-btn')?.addEventListener('click', () => {
+        if (gameState.phase === 'playing') continueGame();
+    });
+}
+
+function makeCardHTML(card, dealt = true) {
+    let extra = '';
+    if (card.isBust) extra += ' bust-card';
+    if (card.isReceived) extra += ' received-card';
+    const cls = `playing-card ${card.type}${extra}${dealt ? ' dealt' : ''}`;
+    const corner = card.type === 'number' ? `<span class="card-corner">${card.value}</span>` : '';
+    return `<div class="${cls}" title="${cardTitle(card)}">${corner}<span class="card-value-main">${card.symbol}</span></div>`;
+}
+
+function cardTitle(card) {
+    if (card.type === 'number') return `Number ${card.value}`;
+    if (card.type === 'modifier') return card.isX2 ? '×2 Multiplier' : `${card.symbol} Modifier`;
+    return card.name;
+}
+
+function renderPlayerCard(player, rank) {
+    const active = gameState.currentDealTarget === player.idx && gameState.phase === 'playing';
+    const isAiActive = active && !player.isHuman && isPlayerActive(player);
+    // Spotlight: dim cards that are not the current player's turn
+    const isDimmed = gameState.phase === 'playing'
+        && gameState.currentDealTarget !== -1
+        && !active
+        && !gameState.actionPending;
+
+    let cls = 'player-card';
+    if (player.isHuman) cls += ' is-human';
+    if (active)   cls += ' is-active';
+    if (isAiActive)  cls += ' is-ai';
+    if (player.busted)  cls += ' is-busted';
+    if (player.frozen)  cls += ' is-frozen';
+    if (player.stayed)  cls += ' is-stayed';
+    if (isDimmed) cls += ' is-dimmed';
+
+    // Status badge (left side of header)
+    const badge = (() => {
+        if (player.hasFlip7) return '<span class="player-status-badge badge-flip7">FLIP 7</span>';
+        if (player.busted)   return '<span class="player-status-badge badge-busted">BUST</span>';
+        if (player.frozen)   return '<span class="player-status-badge badge-frozen">FROZEN</span>';
+        if (player.stayed)   return '<span class="player-status-badge badge-stayed">BANKED</span>';
+        if (isAiActive)      return '<span class="player-status-badge badge-thinking">THINKING…</span>';
+        if (active)          return '<span class="player-status-badge badge-active">ACTIVE</span>';
+        return '';
+    })();
+
+    // Rank badge (#1 gold, #2 teal, rest dim)
+    const rankLabels = ['1ST','2ND','3RD','4TH','5TH','6TH','7TH','8TH','9TH','10TH'];
+    const rankBadge = rank !== undefined
+        ? `<span class="rank-badge rank-${Math.min(rank + 1, 3)}">${rankLabels[rank] ?? (rank+1)+'TH'}</span>`
+        : '';
+
+    // Bust probability badge for any active player with number cards
+    let bustBadge = '';
+    if (isPlayerActive(player) && player.numberCards.length > 0) {
+        const bp    = computeBustProbability(player.numberCards.map(c => c.value), [...gameState.deck]);
+        const bpPct = Math.round(bp * 100);
+        const bpCls = bpPct < 20 ? 'bp-low' : bpPct < 35 ? 'bp-mid' : 'bp-high';
+        bustBadge = `<span class="bust-prob-badge ${bpCls}">${bpPct}%</span>`;
+    }
+
+    // Score progress bar toward WIN_TARGET
+    const progress = Math.min(player.totalScore / WIN_TARGET * 100, 100);
+    const progCls  = player.totalScore >= WIN_TARGET * 0.9 ? 'prog-danger'
+                   : player.totalScore >= WIN_TARGET * 0.75 ? 'prog-warn' : '';
+    const progressBar = `<div class="score-progress-wrap">
+        <div class="score-progress-bar ${progCls}" style="width:${progress}%"></div>
+    </div>`;
+
+    // Flip 7 pips — 7 dots, filled for each collected number
+    const pipCount = player.numberCards.length;
+    const pips = `<div class="flip-pips${player.hasFlip7 ? ' pips-complete' : ''}">
+        ${Array.from({length: FLIP7_COUNT}, (_, i) => {
+            const val = player.numberCards[i]?.value ?? '';
+            return `<div class="flip-pip${i < pipCount ? ' pip-filled' : ''}" title="${val}"></div>`;
+        }).join('')}
+        <span class="pips-label">${pipCount}/${FLIP7_COUNT}</span>
+    </div>`;
+
+    const score = computeRoundScore(player);
+    const hand = player.hand.length
+        ? player.hand.map(c => makeCardHTML(c)).join('')
+        : `<span style="color:var(--txt-dim);font-size:11px;font-family:var(--font-mono)">—</span>`;
+    const icon = player.isHuman ? '▸' : '◦';
+
+    return `
+        <div class="${cls}" data-player-idx="${player.idx}">
+            <div class="player-header">
+                <div class="player-name-wrap">
+                    <div class="player-name">${icon} ${player.name}</div>
+                    <div class="player-score-row">
+                        ${rankBadge}
+                        <div class="player-total">${player.totalScore}</div>
+                        ${bustBadge}
+                    </div>
+                </div>
+                ${badge}
+            </div>
+            ${progressBar}
+            ${pips}
+            <div class="player-hand">${hand}</div>
+            <div class="player-round-score">round: <span class="pts">${score}</span></div>
+        </div>`;
+}
+
+function renderSimulator() {
+    if (gameState.phase === 'setup') return;
+
+    // Compute ranks by total score (for rank badges)
+    const ranked = [...gameState.players].sort((a, b) => b.totalScore - a.totalScore);
+    const rankMap = new Map(ranked.map((p, i) => [p.idx, i]));
+
+    const playersEl = document.getElementById('sim-players');
+    if (playersEl) playersEl.innerHTML = gameState.players.map(p => renderPlayerCard(p, rankMap.get(p.idx))).join('');
+
+    const logEl = document.getElementById('sim-log-entries');
+    if (logEl) {
+        const entries = gameState.log.slice(-120);
+        logEl.innerHTML = entries.map((e, i) => {
+            const isLast = i === entries.length - 1;
+            return `<div class="log-entry${e.cls ? ' log-' + e.cls : ''}${isLast ? ' log-last' : ''}">${esc(e.msg)}</div>`;
+        }).join('');
+        logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    const roundBadge = document.getElementById('log-round-badge');
+    if (roundBadge) roundBadge.textContent = gameState.phase === 'playing' ? `ROUND ${gameState.round}` : '';
+
+    // Update pile buttons — visual stack + count
+    renderPileBtn('sim-draw-btn',    'DRAW',    gameState.deck.length,             FULL_DECK.length * simConfig.deckCount);
+    renderPileBtn('sim-discard-btn', 'DISCARD', gameState.discardThisRound.length, FULL_DECK.length * simConfig.deckCount);
+
+    // Turn order strip
+    renderTurnStrip();
+
+    const humanPlayer = gameState.players.find(p => p.isHuman);
+    const isHumanTurn = humanPlayer &&
+        gameState.currentDealTarget === humanPlayer.idx &&
+        isPlayerActive(humanPlayer) &&
+        gameState.phase === 'playing' &&
+        !gameState.actionPending &&
+        !gameState.flipThreeState;
+
+    // Show/hide AI controls bar
+    const aiControlsBar = document.getElementById('sim-ai-controls');
+    if (aiControlsBar) aiControlsBar.classList.remove('hidden');
+
+    // Show/hide Next AI Move button
+    const nextAiBtn = document.getElementById('sim-next-ai-btn');
+    const speedGroup = document.getElementById('sim-speed-group');
+    if (nextAiBtn && speedGroup) {
+        const curPlayer = gameState.players[gameState.currentDealTarget];
+        const isAiTurn = gameState.phase === 'playing' && curPlayer && !curPlayer.isHuman && isPlayerActive(curPlayer);
+        const showNextAi = !simConfig.autoplay && isAiTurn && !gameState.flipThreeState;
+        nextAiBtn.classList.toggle('hidden', !showNextAi);
+        speedGroup.classList.toggle('hidden', !simConfig.autoplay);
+    }
+
+    // ── Human controls — always visible, state-driven ──
+    const controls = document.getElementById('sim-human-controls');
+    const hitBtn  = document.getElementById('sim-hit-btn');
+    const stayBtn = document.getElementById('sim-stay-btn');
+    const nextRoundCtrl = document.getElementById('sim-next-round-ctrl-btn');
+    const statusLabel   = document.getElementById('controls-status-label');
+
+    if (controls) {
+        const isRoundOver = gameState.phase === 'round_end' || gameState.phase === 'game_over';
+
+        hitBtn  && (hitBtn.disabled  = !isHumanTurn);
+        stayBtn && (stayBtn.disabled = !isHumanTurn);
+
+        if (nextRoundCtrl) {
+            nextRoundCtrl.disabled = gameState.phase !== 'round_end';
+        }
+
+        if (isHumanTurn) {
+            if (statusLabel) statusLabel.textContent = 'YOUR TURN';
+            controls.classList.remove('risk-high', 'ctrl-waiting', 'ctrl-round-over');
+            const remaining = [...gameState.deck];
+            const bp = computeBustProbability(humanPlayer.numberCards.map(c => c.value), remaining);
+            const bpPct = Math.round(bp * 100);
+            const bpCls = bpPct < 20 ? 'risk-low' : bpPct < 35 ? 'risk-mid' : 'risk-high';
+            controls.classList.toggle('risk-high', bpPct >= 35);
+            const ind = document.getElementById('sim-bust-indicator');
+            if (ind) {
+                ind.className = 'bust-indicator-bar ' + bpCls;
+                const numCount = humanPlayer.numberCards.length;
+                ind.innerHTML = numCount > 0
+                    ? `<span class="bust-label">BUST RISK</span><span class="bust-val">${bpPct}%</span><span class="bust-hint"> · ${numCount} numbers held</span>`
+                    : `<span class="bust-label">FIRST CARD — NO BUST RISK</span>`;
+            }
+        } else if (isRoundOver) {
+            if (statusLabel) statusLabel.textContent = gameState.phase === 'game_over' ? 'GAME OVER' : 'ROUND OVER';
+            controls.classList.remove('risk-high');
+            controls.classList.add('ctrl-round-over');
+            const ind = document.getElementById('sim-bust-indicator');
+            if (ind) ind.innerHTML = '';
+        } else {
+            if (statusLabel) statusLabel.textContent = 'WAITING…';
+            controls.classList.remove('risk-high', 'ctrl-round-over');
+            controls.classList.add('ctrl-waiting');
+            const ind = document.getElementById('sim-bust-indicator');
+            if (ind) ind.innerHTML = '';
+        }
+    }
+
+    if (gameState.phase === 'game_over') setTimeout(() => showGameOver(), 300);
+}
+
+function showRoundEnd() {
+    if (gameState.phase === 'game_over') { showGameOver(); return; }
+    animateDiscardFly(() => {
+        SoundEngine.roundEnd();
+        const el = document.getElementById('sim-round-end');
+        if (!el) return;
+        const titleEl = document.getElementById('sim-round-title');
+        const scoresEl = document.getElementById('sim-round-scores');
+
+        if (titleEl) titleEl.textContent = gameState.roundEndReason === 'flip7'
+            ? `Round ${gameState.round} — Flip 7!` : `Round ${gameState.round} Complete`;
+
+        if (scoresEl) {
+            const sorted = [...gameState.players].sort((a, b) => b.totalScore - a.totalScore);
+            scoresEl.innerHTML = sorted.map(p => `
+                <div class="score-row${p.busted ? ' sr-bust' : ''}">
+                    <span class="sr-name">${p.isHuman ? '▸' : '◦'} ${p.name}</span>
+                    <span class="sr-round" data-target="${p.busted ? 0 : p.roundScore}" data-bust="${p.busted ? 1 : 0}">${p.busted ? 'BUST' : '+0'}</span>
+                    <span class="sr-total" data-target="${p.totalScore}">0 pts</span>
+                </div>`).join('');
+        }
+        el.classList.remove('hidden');
+        // Count-up animation for scores
+        const dur = Math.min(getAnimDuration() * 3, 480);
+        if (dur > 0 && scoresEl) {
+            const start = performance.now();
+            const rounds = scoresEl.querySelectorAll('.sr-round[data-target]');
+            const totals = scoresEl.querySelectorAll('.sr-total[data-target]');
+            function tick(now) {
+                const t = Math.min((now - start) / dur, 1);
+                const ease = t < 0.5 ? 2*t*t : -1+(4-2*t)*t; // ease-in-out
+                rounds.forEach(el => {
+                    if (el.dataset.bust === '1') return;
+                    el.textContent = '+' + Math.round(+el.dataset.target * ease);
+                });
+                totals.forEach(el => {
+                    el.textContent = Math.round(+el.dataset.target * ease) + ' pts';
+                });
+                if (t < 1) requestAnimationFrame(tick);
+                else {
+                    rounds.forEach(el => { if (el.dataset.bust !== '1') el.textContent = '+' + el.dataset.target; });
+                    totals.forEach(el => { el.textContent = el.dataset.target + ' pts'; });
+                }
+            }
+            requestAnimationFrame(tick);
+        } else if (scoresEl) {
+            scoresEl.querySelectorAll('.sr-round[data-target]').forEach(el => {
+                if (el.dataset.bust !== '1') el.textContent = '+' + el.dataset.target;
+            });
+            scoresEl.querySelectorAll('.sr-total[data-target]').forEach(el => {
+                el.textContent = el.dataset.target + ' pts';
+            });
+        }
+    });
+}
+
+function showGameOver() {
+    SoundEngine.gameOver();
+    const el = document.getElementById('sim-game-over');
+    if (!el) return;
+    const sorted = [...gameState.players].sort((a, b) => b.totalScore - a.totalScore);
+    const winner = sorted[0];
+    document.getElementById('sim-winner-text').innerHTML =
+        `${winner.isHuman ? '▸' : '◦'} ${winner.name}<br><span style="font-size:20px;color:var(--gold)">${winner.totalScore} pts</span>`;
+    document.getElementById('sim-final-scores').innerHTML = sorted.map((p, i) => `
+        <div class="score-row">
+            <span class="sr-name">${i === 0 ? '★ ' : ''}${p.isHuman ? '▸' : '◦'} ${p.name}</span>
+            <span class="sr-total">${p.totalScore} pts</span>
+        </div>`).join('');
+    el.classList.remove('hidden');
+}
+
+function showActionModal(player, actionCard) {
+    const modal = document.getElementById('sim-action-modal');
+    if (!modal) return;
+    const titles = { Freeze: 'FREEZE', FlipThree: 'FLIP THREE', SecondChance: 'SECOND CHANCE' };
+    const bodies = {
+        Freeze: 'Target player immediately banks their score and exits this round.',
+        FlipThree: 'Target player must draw 3 forced cards.',
+        SecondChance: 'You already hold Second Chance — choose a player to give it to.',
+    };
+    document.getElementById('sim-modal-title').textContent = titles[actionCard.name] || actionCard.name;
+    document.getElementById('sim-modal-body').textContent = bodies[actionCard.name] || '';
+    const tgts = document.getElementById('sim-modal-targets');
+    tgts.innerHTML = gameState.players.filter(p => p.idx !== player.idx && isPlayerActive(p)).map(p => `
+        <button class="target-btn" data-idx="${p.idx}">
+            <span>${p.isHuman ? '▸' : '◦'} ${p.name}</span>
+            <span style="color:var(--gold)">${computeRoundScore(p)} pts</span>
+        </button>`).join('');
+    tgts.querySelectorAll('.target-btn').forEach(btn =>
+        btn.addEventListener('click', () => resolveActionChoice(parseInt(btn.dataset.idx))));
+    modal.classList.remove('hidden');
+}
+
+function hideActionModal() {
+    document.getElementById('sim-action-modal')?.classList.add('hidden');
+}
+
+function showPileModal(which) {
+    const modal = document.getElementById('sim-pile-modal');
+    if (!modal) return;
+
+    const isDraw = which === 'draw';
+    const cards  = isDraw ? [...gameState.deck].reverse() : [...gameState.discardThisRound].reverse();
+    const title  = isDraw
+        ? `DRAW PILE — ${cards.length} cards`
+        : `DISCARD PILE — ${cards.length} cards`;
+
+    document.getElementById('sim-pile-title').textContent = title;
+
+    // Group by type
+    const numbers   = cards.filter(c => c.type === 'number').sort((a, b) => a.value - b.value);
+    const modifiers = cards.filter(c => c.type === 'modifier');
+    const actions   = cards.filter(c => c.type === 'action');
+
+    const group = (label, list) => {
+        if (!list.length) return '';
+        return `<div class="pile-group">
+            <div class="pile-group-label">${label} (${list.length})</div>
+            <div class="pile-cards">${list.map(c => makeCardHTML(c)).join('')}</div>
+        </div>`;
+    };
+
+    document.getElementById('sim-pile-body').innerHTML =
+        cards.length === 0
+            ? `<div class="empty-state" style="padding:20px 0">No cards</div>`
+            : group('NUMBERS', numbers) + group('MODIFIERS', modifiers) + group('ACTIONS', actions);
+
+    modal.classList.remove('hidden');
+}
+
+function hidePileModal() {
+    document.getElementById('sim-pile-modal')?.classList.add('hidden');
+}
+
+function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+
+/* ══════════════════════════════════════════════════════════════════
+   §8  OPTIMAL PLAY ANALYZER UI
+   ══════════════════════════════════════════════════════════════════ */
+
+function initAnalyzer() {
+    buildAnalyzerChips();
+    document.getElementById('ana-reset-seen').addEventListener('click', () => {
+        analyzerState.seenCardIds.clear();
+        renderAnalyzer();
+        if (activeTab === 'tracker') renderTracker();
+    });
+}
+
+function buildAnalyzerChips() {
+    const numEl = document.getElementById('ana-number-chips');
+    if (numEl) {
+        numEl.innerHTML = Array.from({length: 13}, (_, v) =>
+            `<div class="sel-chip number" data-type="number" data-value="${v}" data-max="${v === 0 ? 1 : v}">${v}</div>`
+        ).join('');
+        numEl.querySelectorAll('.sel-chip').forEach(c => c.addEventListener('click', () => onNumberChip(c)));
+    }
+
+    const modEl = document.getElementById('ana-modifier-chips');
+    if (modEl) {
+        modEl.innerHTML = MODIFIER_DEFS.map(d =>
+            `<div class="sel-chip modifier" data-symbol="${d.symbol}" data-isx2="${d.isX2}" data-value="${d.value}" data-max="${d.count}">${d.symbol}</div>`
+        ).join('');
+        modEl.querySelectorAll('.sel-chip').forEach(c => c.addEventListener('click', () => onModifierChip(c)));
+    }
+
+    const actEl = document.getElementById('ana-action-chips');
+    if (actEl) {
+        actEl.innerHTML = ACTION_DEFS.map(d =>
+            `<div class="sel-chip action" data-name="${d.name}">${d.symbol}</div>`
+        ).join('');
+        actEl.querySelectorAll('.sel-chip').forEach(c => c.addEventListener('click', () => onActionChip(c)));
+    }
+}
+
+function onNumberChip(chip) {
+    const v = parseInt(chip.dataset.value);
+    if (analyzerState.handNumbers.includes(v)) {
+        analyzerState.handNumbers = analyzerState.handNumbers.filter(x => x !== v);
+        chip.classList.remove('selected');
+    } else if (analyzerState.handNumbers.length < FLIP7_COUNT) {
+        analyzerState.handNumbers.push(v);
+        chip.classList.add('selected');
+    }
+    recomputeAndRender();
+}
+
+function onModifierChip(chip) {
+    const isX2 = chip.dataset.isx2 === 'true';
+    const val = isX2 ? 'x2' : parseInt(chip.dataset.value);
+    const max = parseInt(chip.dataset.max);
+    const cur = analyzerState.handModifiers.filter(m => m === val).length;
+    if (cur >= max) {
+        analyzerState.handModifiers = analyzerState.handModifiers.filter(m => m !== val);
+        chip.classList.remove('selected');
+    } else {
+        analyzerState.handModifiers.push(val);
+        chip.classList.add('selected');
+    }
+    recomputeAndRender();
+}
+
+function onActionChip(chip) {
+    const name = chip.dataset.name;
+    if (analyzerState.handActions.includes(name)) {
+        analyzerState.handActions = analyzerState.handActions.filter(n => n !== name);
+        chip.classList.remove('selected');
+    } else {
+        analyzerState.handActions.push(name);
+        chip.classList.add('selected');
+    }
+    renderAnalyzer();
+}
+
+function recomputeAndRender() {
+    renderAnalyzer();
+    if (activeTab === 'tracker') renderBustPanel();
+}
+
+function renderAnalyzer() {
+    const { handNumbers, handModifiers, handActions, seenCardIds } = analyzerState;
+    const remaining = getRemainingDeck(seenCardIds);
+    const bp = computeBustProbability(handNumbers, remaining);
+    const { evHit, currentScore } = computeExpectedValue(handNumbers, handModifiers, remaining);
+    const rec = getRecommendation(bp, evHit, handNumbers.length);
+
+    // Hand display
+    const handEl = document.getElementById('ana-hand-display');
+    if (handEl) {
+        if (!handNumbers.length && !handModifiers.length && !handActions.length) {
+            handEl.innerHTML = '<span class="empty-state">No cards selected</span>';
+        } else {
+            handEl.innerHTML = [
+                ...handNumbers.map(v => `<div class="playing-card number dealt"><span class="card-corner">${v}</span><span class="card-value-main">${v}</span></div>`),
+                ...handModifiers.map(m => `<div class="playing-card modifier dealt"><span class="card-value-main">${m === 'x2' ? 'x2' : '+'+m}</span></div>`),
+                ...handActions.map(n => { const d = ACTION_DEFS.find(x => x.name === n); return `<div class="playing-card action dealt"><span class="card-value-main">${d?.symbol || n}</span></div>`; }),
+            ].join('');
+        }
+    }
+
+    // Score breakdown
+    const scoreEl = document.getElementById('ana-score-breakdown');
+    if (scoreEl) {
+        if (handNumbers.length || handModifiers.length) {
+            const numSum = handNumbers.reduce((a, b) => a + b, 0);
+            const flat = handModifiers.filter(m => m !== 'x2').reduce((a, b) => a + b, 0);
+            const hasX2 = handModifiers.includes('x2');
+            let formula = `${numSum}`;
+            if (flat > 0) formula += ` + ${flat}`;
+            if (hasX2) formula = `(${formula}) × 2`;
+            if (handNumbers.length === FLIP7_COUNT) formula += ` + ${FLIP7_BONUS} (Flip 7)`;
+            scoreEl.innerHTML = `<span style="color:var(--txt-dim);font-size:11px">${formula}</span><span class="score-big">${currentScore}</span>`;
+        } else { scoreEl.innerHTML = ''; }
+    }
+
+    // Results
+    const resultsEl = document.getElementById('ana-results-body');
+    if (resultsEl) {
+        if (!handNumbers.length && !handModifiers.length) {
+            resultsEl.innerHTML = '<div class="empty-state" style="padding:20px 0">Select cards to see analysis</div>';
+        } else {
+            const bpPct = Math.round(bp * 100);
+            const bpCls = bpPct < 20 ? 'low' : bpPct < 35 ? 'mid' : 'high';
+            const evCls = evHit > 0 ? 'positive' : 'negative';
+            const canFlip = handNumbers.length >= 6;
+
+            resultsEl.innerHTML = `
+                <div class="analysis-block">
+                    <div class="analysis-label">BUST PROBABILITY — NEXT DRAW</div>
+                    <div class="prob-track"><div class="prob-fill ${bpCls}" style="width:${bpPct}%"></div></div>
+                    <span class="prob-big ${bpCls}">${bpPct}%</span>
+                    <span class="prob-sublabel">chance of busting</span>
+                    ${canFlip ? `<div style="margin-top:8px;color:var(--gold);font-size:12px">⭐ One number away from Flip 7! (+${FLIP7_BONUS} pts)</div>` : ''}
+                </div>
+
+                <div class="analysis-block">
+                    <div class="analysis-label">EXPECTED VALUE</div>
+                    <div class="ev-grid">
+                        <div class="ev-cell ev-hit">
+                            <div class="ev-cell-label">IF YOU HIT</div>
+                            <div class="ev-cell-value ${evCls}">${evHit >= 0 ? '+' : ''}${evHit.toFixed(1)}</div>
+                        </div>
+                        <div class="ev-cell ev-stay">
+                            <div class="ev-cell-label">IF YOU STAY</div>
+                            <div class="ev-cell-value">+0.0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="analysis-block">
+                    <div class="analysis-label">RECOMMENDATION</div>
+                    <div class="rec-block ${rec.cls}">
+                        <div class="rec-action">${rec.action}</div>
+                        <div class="rec-reason">${rec.reasoning}</div>
+                    </div>
+                </div>`;
+        }
+    }
+
+    // Deck context
+    document.getElementById('ana-remaining-count').textContent = remaining.length;
+    document.getElementById('ana-remaining-numbers').textContent = remaining.filter(c => c.type === 'number').length;
+    document.getElementById('ana-seen-count').textContent = seenCardIds.size;
+}
+
+
+/* ══════════════════════════════════════════════════════════════════
+   §9  CARD TRACKER UI
+   ══════════════════════════════════════════════════════════════════ */
+
+function initTracker() {
+    renderTracker();
+    document.getElementById('trk-reset-btn').addEventListener('click', () => {
+        analyzerState.seenCardIds.clear();
+        renderTracker();
+        if (activeTab === 'analyzer') renderAnalyzer();
+    });
+    // Event delegation — one listener per container instead of per-chip
+    ['trk-number-grid', 'trk-modifier-grid', 'trk-action-grid'].forEach(id => {
+        document.getElementById(id)?.addEventListener('click', e => {
+            const chip = e.target.closest('.trk-chip');
+            if (chip) toggleTrackerCard(parseInt(chip.dataset.id));
+        });
+    });
+}
+
+function renderTracker() {
+    renderTrackerGrids();
+    renderTrackerStats();
+    renderBustPanel();
+    renderDistributionChart();
+}
+
+function renderTrackerGrids() {
+    const numEl = document.getElementById('trk-number-grid');
+    if (numEl) {
+        const sorted = FULL_DECK.filter(c => c.type === 'number').sort((a, b) => a.value - b.value);
+        numEl.innerHTML = sorted.map(c => {
+            const seen = analyzerState.seenCardIds.has(c.id);
+            return `<div class="trk-chip number${seen ? ' seen' : ''}" data-id="${c.id}" title="Number ${c.value}">${c.value}</div>`;
+        }).join('');
+    }
+
+    const modEl = document.getElementById('trk-modifier-grid');
+    if (modEl) {
+        modEl.innerHTML = FULL_DECK.filter(c => c.type === 'modifier').map(c => {
+            const seen = analyzerState.seenCardIds.has(c.id);
+            return `<div class="trk-chip modifier${seen ? ' seen' : ''}" data-id="${c.id}" title="${c.symbol}">${c.symbol}</div>`;
+        }).join('');
+    }
+
+    const actEl = document.getElementById('trk-action-grid');
+    if (actEl) {
+        actEl.innerHTML = FULL_DECK.filter(c => c.type === 'action').map(c => {
+            const seen = analyzerState.seenCardIds.has(c.id);
+            return `<div class="trk-chip action${seen ? ' seen' : ''}" data-id="${c.id}" title="${c.name}">${c.symbol}</div>`;
+        }).join('');
+    }
+}
+
+function toggleTrackerCard(cardId) {
+    if (analyzerState.seenCardIds.has(cardId)) analyzerState.seenCardIds.delete(cardId);
+    else analyzerState.seenCardIds.add(cardId);
+    renderTrackerGrids();
+    renderTrackerStats();
+    renderBustPanel();
+    renderDistributionChart();
+    if (activeTab === 'analyzer') renderAnalyzer();
+}
+
+function renderTrackerStats() {
+    const el = document.getElementById('trk-stats');
+    if (!el) return;
+    const rem = getRemainingDeck(analyzerState.seenCardIds);
+    const rN = rem.filter(c => c.type === 'number').length;
+    const rM = rem.filter(c => c.type === 'modifier').length;
+    const rA = rem.filter(c => c.type === 'action').length;
+    el.innerHTML = [
+        ['REMAINING', rem.length, true],
+        ['NUMBERS',   rN,        false],
+        ['MODIFIERS', rM,        false],
+        ['ACTIONS',   rA,        false],
+        ['SEEN',      analyzerState.seenCardIds.size, false],
+    ].map(([lbl, val, hi]) => `
+        <div class="trk-stat-item">
+            <div class="trk-stat-lbl">${lbl}</div>
+            <div class="trk-stat-val${hi ? ' hi' : ''}">${val}</div>
+        </div>`).join('');
+}
+
+function renderBustPanel() {
+    const el = document.getElementById('trk-bust-panel');
+    if (!el) return;
+    const handNumbers = analyzerState.handNumbers;
+
+    if (!handNumbers.length) {
+        el.innerHTML = '<div class="empty-state" style="font-size:12px">Set your hand in Optimal Play tab</div>';
+        return;
+    }
+
+    const remaining = getRemainingDeck(analyzerState.seenCardIds);
+    const bp = computeBustProbability(handNumbers, remaining);
+    const bpPct = Math.round(bp * 100);
+    const bpCls = bpPct < 20 ? 'low' : bpPct < 35 ? 'mid' : 'high';
+
+    const dangerDetails = [...new Set(handNumbers)].map(v => ({
+        value: v,
+        count: remaining.filter(c => c.type === 'number' && c.value === v).length,
+    })).filter(d => d.count > 0);
+
+    const detailRows = dangerDetails.length
+        ? dangerDetails.map(d => {
+            const rowPct = Math.round(d.count / remaining.length * 100);
+            const rowCls = rowPct < 10 ? 'low' : rowPct < 20 ? 'mid' : 'high';
+            return `<div class="bust-row">
+                <span class="bust-row-lbl">Another ${d.value}</span>
+                <div class="bust-row-bar">
+                    <div class="prob-track" style="height:5px">
+                        <div class="prob-fill ${rowCls}" style="width:${Math.min(100,rowPct*3)}%"></div>
+                    </div>
+                </div>
+                <span class="bust-row-pct ${rowCls}">${d.count} left</span>
+            </div>`;
+          }).join('')
+        : `<div style="color:var(--teal);font-size:11px;font-family:var(--font-mono)">All your numbers exhausted — no bust possible.</div>`;
+
+    el.innerHTML = `
+        <div class="bust-overall">
+            <div>
+                <div class="bust-overall-label">OVERALL BUST RISK</div>
+                <div style="font-size:11px;color:var(--txt-dim);font-family:var(--font-mono)">${remaining.length} cards remain</div>
+            </div>
+            <div class="bust-overall-pct ${bpCls}">${bpPct}%</div>
+        </div>
+        <div style="margin-bottom:6px;font-family:var(--font-mono);font-size:9px;letter-spacing:.1em;color:var(--txt-dim)">DANGEROUS CARDS</div>
+        ${detailRows}`;
+}
+
+// ✅ BUG FIX 4: Replace broken flex chart with inline SVG
+function renderDistributionChart() {
+    const el = document.getElementById('trk-chart');
+    if (!el) return;
+
+    const remaining = getRemainingDeck(analyzerState.seenCardIds);
+
+    const BAR_W = 16, GAP = 5, H = 80, LABEL_H = 22, TOP_PAD = 16;
+    const TOTAL_H = H + LABEL_H + TOP_PAD;
+
+    // Build columns: 0-12 numbers, then gap, Mod, Act
+    const cols = [];
+    for (let v = 0; v <= 12; v++) {
+        const total = v === 0 ? 1 : v;
+        const rem   = remaining.filter(c => c.type === 'number' && c.value === v).length;
+        cols.push({ label: String(v), total, rem, color: '#cad2ff', gapBefore: false });
+    }
+    const totalMod = FULL_DECK.filter(c => c.type === 'modifier').length;
+    const remMod   = remaining.filter(c => c.type === 'modifier').length;
+    cols.push({ label: 'MOD', total: totalMod, rem: remMod, color: '#06d6a0', gapBefore: true });
+
+    const totalAct = FULL_DECK.filter(c => c.type === 'action').length;
+    const remAct   = remaining.filter(c => c.type === 'action').length;
+    cols.push({ label: 'ACT', total: totalAct, rem: remAct, color: '#e63946', gapBefore: false });
+
+    const maxTotal = Math.max(...cols.map(c => c.total), 1);
+
+    // Compute x positions (account for gap before MOD)
+    let xCursor = 4;
+    const positions = cols.map(col => {
+        if (col.gapBefore) xCursor += GAP * 2;
+        const x = xCursor;
+        xCursor += BAR_W + GAP;
+        return x;
+    });
+
+    const totalW = xCursor + 4;
+
+    const bars = cols.map((col, i) => {
+        const x = positions[i];
+        const remH  = Math.max(Math.round((col.rem / maxTotal) * H), col.rem > 0 ? 2 : 0);
+        const seenH = Math.max(Math.round(((col.total - col.rem) / maxTotal) * H), 0);
+
+        const remY   = TOP_PAD + (H - remH - seenH);
+        const seenY  = TOP_PAD + (H - seenH);
+        const labelY = TOP_PAD + H + 14;
+        const countY = remY - 3;
+
+        return `
+            ${seenH > 0 ? `<rect x="${x}" y="${seenY}" width="${BAR_W}" height="${seenH}" fill="#252830" rx="0"/>` : ''}
+            ${remH  > 0 ? `<rect x="${x}" y="${remY}"  width="${BAR_W}" height="${remH}"  fill="${col.color}" opacity="0.85" rx="2 2 0 0"/>` : ''}
+            <text x="${x + BAR_W/2}" y="${labelY}" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="8" fill="#3a3e4a">${col.label}</text>
+            ${col.rem > 0 ? `<text x="${x + BAR_W/2}" y="${countY}" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="8" fill="${col.color}">${col.rem}</text>` : ''}`;
+    }).join('');
+
+    // Legend
+    const lgX = totalW - 68;
+    const legend = `
+        <rect x="${lgX}" y="4" width="8" height="8" fill="#cad2ff" opacity="0.85" rx="1"/>
+        <text x="${lgX + 12}" y="12" font-family="IBM Plex Mono, monospace" font-size="8" fill="#3a3e4a">Remaining</text>
+        <rect x="${lgX}" y="18" width="8" height="8" fill="#252830" rx="1"/>
+        <text x="${lgX + 12}" y="26" font-family="IBM Plex Mono, monospace" font-size="8" fill="#3a3e4a">Seen</text>`;
+
+    el.innerHTML = `<svg viewBox="0 0 ${totalW} ${TOTAL_H}" width="100%" height="${TOTAL_H}" style="overflow:visible">${bars}${legend}</svg>`;
+}
+
+
+/* ══════════════════════════════════════════════════════════════════
+   §10 INITIALIZATION
+   ══════════════════════════════════════════════════════════════════ */
+
+document.addEventListener('DOMContentLoaded', () => {
+    initTabs();
+    initSimulator();
+    initAnalyzer();
+    initTracker();
+});
