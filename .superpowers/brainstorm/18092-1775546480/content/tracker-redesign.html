@@ -1,0 +1,202 @@
+<style>
+  body { background: #0d0d0d; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; }
+  .section { margin-bottom: 28px; }
+  h2 { color: #fff; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 4px; }
+  .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 20px; }
+
+  /* Deck controls bar */
+  .deck-controls { display: flex; align-items: center; gap: 16px; padding: 14px 20px; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+  .deck-controls label { font-size: 0.8rem; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+  .deck-num-input { display: flex; align-items: center; gap: 8px; }
+  .deck-num-input input { width: 52px; padding: 6px 10px; background: #111; border: 1px solid #444; border-radius: 5px; color: #fff; font-size: 1rem; text-align: center; }
+  .deck-action-btns { display: flex; gap: 10px; margin-left: auto; flex-wrap: wrap; }
+  .btn-ghost { padding: 7px 14px; background: transparent; border: 1px solid #555; border-radius: 5px; color: #bbb; font-size: 0.78rem; cursor: pointer; white-space: nowrap; }
+  .btn-ghost:hover { border-color: #aaa; color: #fff; }
+  .btn-accent { padding: 7px 14px; background: #2563eb22; border: 1px solid #2563eb; border-radius: 5px; color: #60a5fa; font-size: 0.78rem; cursor: pointer; white-space: nowrap; }
+
+  /* Stats bar */
+  .stats-row { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+  .stat-chip { flex: 1; min-width: 80px; padding: 10px 14px; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; text-align: center; }
+  .stat-chip .val { font-size: 1.4rem; font-weight: 700; color: #fff; }
+  .stat-chip .lbl { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 1px; color: #666; margin-top: 2px; }
+
+  /* Card tracker table */
+  .tracker-section-header { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 2px; color: #666; padding: 6px 0 4px; border-bottom: 1px solid #222; margin-bottom: 8px; margin-top: 16px; }
+  .tracker-row { display: flex; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px solid #1a1a1a; }
+  .tracker-row:last-child { border-bottom: none; }
+  .card-label { width: 56px; text-align: right; font-size: 0.85rem; color: #ccc; }
+  .card-label .card-badge { display: inline-block; padding: 3px 8px; background: #222; border: 1px solid #333; border-radius: 4px; font-weight: 600; font-size: 0.82rem; }
+  .counter-group { display: flex; align-items: center; gap: 6px; }
+  .counter-btn { width: 26px; height: 26px; border-radius: 5px; border: 1px solid #444; background: #1a1a1a; color: #aaa; font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; }
+  .counter-btn:hover { border-color: #777; color: #fff; }
+  .counter-fields { display: flex; gap: 8px; align-items: center; }
+  .counter-field { text-align: center; }
+  .counter-field .num { font-size: 1rem; font-weight: 600; color: #fff; min-width: 22px; display: inline-block; }
+  .counter-field .field-label { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 1px; color: #555; display: block; }
+  .counter-sep { color: #333; font-size: 1rem; margin: 0 2px; }
+  .progress-track { flex: 1; height: 5px; background: #222; border-radius: 3px; overflow: hidden; }
+  .progress-fill { height: 100%; background: #2563eb; border-radius: 3px; transition: width 0.2s; }
+  .progress-fill.danger { background: #ef4444; }
+  .progress-fill.warning { background: #f59e0b; }
+
+  /* Distribution chart */
+  .dist-chart { padding: 16px; background: #111; border: 1px solid #222; border-radius: 8px; margin-top: 16px; }
+  .dist-chart-title { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 2px; color: #555; margin-bottom: 14px; }
+  .bars { display: flex; align-items: flex-end; gap: 4px; height: 80px; }
+  .bar-col { display: flex; flex-direction: column; align-items: center; flex: 1; gap: 0; }
+  .bar-segment { width: 100%; border-radius: 2px 2px 0 0; }
+  .bar-segment.remaining { background: #2563eb; }
+  .bar-segment.drawn { background: #1a1a2e; border: 1px solid #333; }
+  .bar-lbl { font-size: 0.6rem; color: #555; margin-top: 4px; text-align: center; }
+  .chart-legend { display: flex; gap: 16px; margin-top: 10px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 5px; }
+</style>
+
+<h2>Card Tracker — Redesign Mockup</h2>
+<p class="subtitle">Click an option to select your preferred layout approach</p>
+
+<div class="options" data-multiselect>
+  <div class="option" data-choice="layout-a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Compact table rows with progress bars</h3>
+      <p>Each card type is a row with [card badge] [−] [drawn/left fields] [+] [progress bar]. Dense, efficient, works great for all 13 number values + modifiers + actions.</p>
+
+      <div style="margin-top:16px; background:#0d0d0d; border:1px solid #222; border-radius:8px; padding:16px;">
+        <!-- Deck controls -->
+        <div class="deck-controls">
+          <label>Decks in play</label>
+          <div class="deck-num-input">
+            <input type="number" value="1" min="1">
+          </div>
+          <div class="deck-action-btns">
+            <button class="btn-ghost">Load current game deck</button>
+            <button class="btn-accent">Import to game</button>
+          </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-row">
+          <div class="stat-chip"><div class="val">89</div><div class="lbl">Remaining</div></div>
+          <div class="stat-chip"><div class="val">74</div><div class="lbl">Numbers</div></div>
+          <div class="stat-chip"><div class="val">7</div><div class="lbl">Modifiers</div></div>
+          <div class="stat-chip"><div class="val">8</div><div class="lbl">Actions</div></div>
+          <div class="stat-chip"><div class="val">6</div><div class="lbl">Drawn</div></div>
+        </div>
+
+        <!-- Number cards -->
+        <div class="tracker-section-header">Number Cards</div>
+        <div class="tracker-row">
+          <div class="card-label"><span class="card-badge">0</span></div>
+          <div class="counter-group">
+            <button class="counter-btn">−</button>
+            <div class="counter-fields">
+              <div class="counter-field"><span class="num">0</span><span class="field-label">drawn</span></div>
+              <div class="counter-sep">/</div>
+              <div class="counter-field"><span class="num">1</span><span class="field-label">left</span></div>
+            </div>
+            <button class="counter-btn">+</button>
+          </div>
+          <div class="progress-track"><div class="progress-fill" style="width:100%"></div></div>
+        </div>
+        <div class="tracker-row">
+          <div class="card-label"><span class="card-badge">3</span></div>
+          <div class="counter-group">
+            <button class="counter-btn">−</button>
+            <div class="counter-fields">
+              <div class="counter-field"><span class="num">1</span><span class="field-label">drawn</span></div>
+              <div class="counter-sep">/</div>
+              <div class="counter-field"><span class="num">2</span><span class="field-label">left</span></div>
+            </div>
+            <button class="counter-btn">+</button>
+          </div>
+          <div class="progress-track"><div class="progress-fill warning" style="width:66%"></div></div>
+        </div>
+        <div class="tracker-row">
+          <div class="card-label"><span class="card-badge">7</span></div>
+          <div class="counter-group">
+            <button class="counter-btn">−</button>
+            <div class="counter-fields">
+              <div class="counter-field"><span class="num">7</span><span class="field-label">drawn</span></div>
+              <div class="counter-sep">/</div>
+              <div class="counter-field"><span class="num">0</span><span class="field-label">left</span></div>
+            </div>
+            <button class="counter-btn">+</button>
+          </div>
+          <div class="progress-track"><div class="progress-fill danger" style="width:0%"></div></div>
+        </div>
+
+        <!-- Action cards -->
+        <div class="tracker-section-header">Action Cards</div>
+        <div class="tracker-row">
+          <div class="card-label"><span class="card-badge" style="color:#f59e0b;border-color:#f59e0b44">FRZ</span></div>
+          <div class="counter-group">
+            <button class="counter-btn">−</button>
+            <div class="counter-fields">
+              <div class="counter-field"><span class="num">1</span><span class="field-label">drawn</span></div>
+              <div class="counter-sep">/</div>
+              <div class="counter-field"><span class="num">2</span><span class="field-label">left</span></div>
+            </div>
+            <button class="counter-btn">+</button>
+          </div>
+          <div class="progress-track"><div class="progress-fill warning" style="width:66%"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="layout-b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Grid cards with inline counters</h3>
+      <p>Cards displayed in a responsive grid, each card visually styled like a real card with a counter overlay. More visual, takes more space.</p>
+
+      <div style="margin-top:16px; background:#0d0d0d; border:1px solid #222; border-radius:8px; padding:16px;">
+        <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap:8px;">
+          <!-- Card tile -->
+          <div style="background:#111; border:1px solid #2563eb44; border-radius:8px; padding:8px 6px; text-align:center; position:relative;">
+            <div style="font-size:1.2rem; font-weight:700; color:#fff;">5</div>
+            <div style="font-size:0.6rem; color:#555; margin:2px 0 6px;">×5 in deck</div>
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:4px;">
+              <button style="flex:1; background:#1a1a1a; border:1px solid #333; border-radius:3px; color:#aaa; font-size:0.75rem; padding:3px 0;">−</button>
+              <span style="font-size:0.85rem; font-weight:600;">3</span>
+              <button style="flex:1; background:#1a1a1a; border:1px solid #333; border-radius:3px; color:#aaa; font-size:0.75rem; padding:3px 0;">+</button>
+            </div>
+            <div style="font-size:0.58rem; color:#666; margin-top:4px;">2 left</div>
+          </div>
+          <div style="background:#111; border:1px solid #333; border-radius:8px; padding:8px 6px; text-align:center; opacity:0.5;">
+            <div style="font-size:1.2rem; font-weight:700; color:#aaa;">7</div>
+            <div style="font-size:0.6rem; color:#555; margin:2px 0 6px;">×7 in deck</div>
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:4px;">
+              <button style="flex:1; background:#1a1a1a; border:1px solid #333; border-radius:3px; color:#aaa; font-size:0.75rem; padding:3px 0;">−</button>
+              <span style="font-size:0.85rem; font-weight:600;">7</span>
+              <button style="flex:1; background:#1a1a1a; border:1px solid #333; border-radius:3px; color:#aaa; font-size:0.75rem; padding:3px 0;">+</button>
+            </div>
+            <div style="font-size:0.58rem; color:#ef4444; margin-top:4px;">0 left</div>
+          </div>
+          <div style="background:#111; border:1px solid #333; border-radius:8px; padding:8px 6px; text-align:center;">
+            <div style="font-size:1.2rem; font-weight:700; color:#fff;">9</div>
+            <div style="font-size:0.6rem; color:#555; margin:2px 0 6px;">×9 in deck</div>
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:4px;">
+              <button style="flex:1; background:#1a1a1a; border:1px solid #333; border-radius:3px; color:#aaa; font-size:0.75rem; padding:3px 0;">−</button>
+              <span style="font-size:0.85rem; font-weight:600;">0</span>
+              <button style="flex:1; background:#1a1a1a; border:1px solid #333; border-radius:3px; color:#aaa; font-size:0.75rem; padding:3px 0;">+</button>
+            </div>
+            <div style="font-size:0.58rem; color:#10b981; margin-top:4px;">9 left</div>
+          </div>
+          <div style="background:#111; border:1px solid #333; border-radius:8px; padding:8px 6px; text-align:center;">
+            <div style="font-size:1rem; font-weight:700; color:#fff;">12</div>
+            <div style="font-size:0.6rem; color:#555; margin:2px 0 6px;">×12 in deck</div>
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:4px;">
+              <button style="flex:1; background:#1a1a1a; border:1px solid #333; border-radius:3px; color:#aaa; font-size:0.75rem; padding:3px 0;">−</button>
+              <span style="font-size:0.85rem; font-weight:600;">2</span>
+              <button style="flex:1; background:#1a1a1a; border:1px solid #333; border-radius:3px; color:#aaa; font-size:0.75rem; padding:3px 0;">+</button>
+            </div>
+            <div style="font-size:0.58rem; color:#f59e0b; margin-top:4px;">10 left</div>
+          </div>
+        </div>
+        <div style="font-size:0.72rem; color:#555; margin-top:10px; font-style:italic;">Colors: blue=mostly remaining, amber=half drawn, red=exhausted</div>
+      </div>
+    </div>
+  </div>
+</div>
