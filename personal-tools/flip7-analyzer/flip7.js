@@ -1942,16 +1942,63 @@ function renderAnalyzer() {
 
 function initTracker() {
     renderTracker();
-    document.getElementById('trk-reset-btn').addEventListener('click', () => {
-        analyzerState.seenCardIds.clear();
+
+    // Deck count stepper
+    document.getElementById('trk-deck-dec')?.addEventListener('click', () => {
+        if (trackerState.numDecks <= 1) return;
+        if (trkTotalDrawn() > 0 && !confirm('Changing deck count will reset all drawn counts. Continue?')) return;
+        trackerState.numDecks--;
+        // Clamp drawn counts that would exceed new total
+        for (const [k, v] of Object.entries(trackerState.drawn.numbers))
+            trackerState.drawn.numbers[k] = Math.min(v, trkTotal('numbers', +k));
+        for (const [k, v] of Object.entries(trackerState.drawn.modifiers))
+            trackerState.drawn.modifiers[k] = Math.min(v, trkTotal('modifiers', k));
+        for (const [k, v] of Object.entries(trackerState.drawn.actions))
+            trackerState.drawn.actions[k] = Math.min(v, trkTotal('actions', k));
+        document.getElementById('trk-deck-display').textContent = trackerState.numDecks;
         renderTracker();
         if (activeTab === 'analyzer') renderAnalyzer();
     });
-    // Event delegation — one listener per container instead of per-chip
+
+    document.getElementById('trk-deck-inc')?.addEventListener('click', () => {
+        trackerState.numDecks++;
+        document.getElementById('trk-deck-display').textContent = trackerState.numDecks;
+        renderTracker();
+        if (activeTab === 'analyzer') renderAnalyzer();
+    });
+
+    // Reset button
+    document.getElementById('trk-reset-btn')?.addEventListener('click', () => {
+        if (!confirm('Reset all tracker counts?')) return;
+        for (const k of Object.keys(trackerState.drawn.numbers))  trackerState.drawn.numbers[k]  = 0;
+        for (const k of Object.keys(trackerState.drawn.modifiers)) trackerState.drawn.modifiers[k] = 0;
+        for (const k of Object.keys(trackerState.drawn.actions))   trackerState.drawn.actions[k]   = 0;
+        renderTracker();
+        if (activeTab === 'analyzer') renderAnalyzer();
+    });
+
+    // Load game deck button
+    document.getElementById('trk-load-game-btn')?.addEventListener('click', loadGameDeckToTracker);
+
+    // Import to game button
+    document.getElementById('trk-import-game-btn')?.addEventListener('click', importTrackerDeckToGame);
+
+    // +/- button delegation for grids
     ['trk-number-grid', 'trk-modifier-grid', 'trk-action-grid'].forEach(id => {
         document.getElementById(id)?.addEventListener('click', e => {
-            const chip = e.target.closest('.trk-chip');
-            if (chip) toggleTrackerCard(parseInt(chip.dataset.id));
+            const btn = e.target.closest('.trk-tile-btn');
+            if (!btn) return;
+            const tile = btn.closest('.trk-tile');
+            if (!tile) return;
+            const { category, key } = tile.dataset;
+            const delta = btn.dataset.delta === '+' ? 1 : -1;
+            const parsedKey = category === 'numbers' ? +key : key;
+            const cur   = trackerState.drawn[category][parsedKey] ?? 0;
+            const max   = trkTotal(category, parsedKey);
+            const next  = Math.max(0, Math.min(max, cur + delta));
+            trackerState.drawn[category][parsedKey] = next;
+            renderTracker();
+            if (activeTab === 'analyzer') renderAnalyzer();
         });
     });
 }
@@ -1964,55 +2011,85 @@ function renderTracker() {
 }
 
 function renderTrackerGrids() {
+    // Number cards grid
     const numEl = document.getElementById('trk-number-grid');
     if (numEl) {
-        const sorted = FULL_DECK.filter(c => c.type === 'number').sort((a, b) => a.value - b.value);
-        numEl.innerHTML = sorted.map(c => {
-            const seen = analyzerState.seenCardIds.has(c.id);
-            return `<div class="trk-chip number${seen ? ' seen' : ''}" data-id="${c.id}" title="Number ${c.value}">${c.value}</div>`;
+        numEl.innerHTML = Array.from({ length: 13 }, (_, v) => {
+            const total = trkTotal('numbers', v);
+            const drawn = trackerState.drawn.numbers[v] ?? 0;
+            const left  = total - drawn;
+            const leftCls = left === 0 ? 'exhausted' : left / total < 0.25 ? 'danger' : left / total < 0.5 ? 'warn' : 'ok';
+            return `<div class="trk-tile" data-category="numbers" data-key="${v}">
+                <div class="trk-tile-value">${v}</div>
+                <div class="trk-tile-total">×${total} in deck</div>
+                <div class="trk-tile-counter">
+                    <button class="trk-tile-btn" data-delta="-">−</button>
+                    <span class="trk-tile-drawn">${drawn}</span>
+                    <button class="trk-tile-btn" data-delta="+">+</button>
+                </div>
+                <div class="trk-tile-left ${leftCls}">${left} left</div>
+            </div>`;
         }).join('');
     }
 
+    // Modifier cards grid
     const modEl = document.getElementById('trk-modifier-grid');
     if (modEl) {
-        modEl.innerHTML = FULL_DECK.filter(c => c.type === 'modifier').map(c => {
-            const seen = analyzerState.seenCardIds.has(c.id);
-            return `<div class="trk-chip modifier${seen ? ' seen' : ''}" data-id="${c.id}" title="${c.symbol}">${c.symbol}</div>`;
+        modEl.innerHTML = MODIFIER_DEFS.map(def => {
+            const total = trkTotal('modifiers', def.symbol);
+            const drawn = trackerState.drawn.modifiers[def.symbol] ?? 0;
+            const left  = total - drawn;
+            const leftCls = left === 0 ? 'exhausted' : left / total < 0.5 ? 'warn' : 'ok';
+            return `<div class="trk-tile trk-tile--mod" data-category="modifiers" data-key="${def.symbol}">
+                <div class="trk-tile-value">${def.symbol}</div>
+                <div class="trk-tile-total">×${total} in deck</div>
+                <div class="trk-tile-counter">
+                    <button class="trk-tile-btn" data-delta="-">−</button>
+                    <span class="trk-tile-drawn">${drawn}</span>
+                    <button class="trk-tile-btn" data-delta="+">+</button>
+                </div>
+                <div class="trk-tile-left ${leftCls}">${left} left</div>
+            </div>`;
         }).join('');
     }
 
+    // Action cards grid
     const actEl = document.getElementById('trk-action-grid');
     if (actEl) {
-        actEl.innerHTML = FULL_DECK.filter(c => c.type === 'action').map(c => {
-            const seen = analyzerState.seenCardIds.has(c.id);
-            return `<div class="trk-chip action${seen ? ' seen' : ''}" data-id="${c.id}" title="${c.name}">${c.symbol}</div>`;
+        actEl.innerHTML = ACTION_DEFS.map(def => {
+            const total = trkTotal('actions', def.name);
+            const drawn = trackerState.drawn.actions[def.name] ?? 0;
+            const left  = total - drawn;
+            const leftCls = left === 0 ? 'exhausted' : left / total < 0.5 ? 'warn' : 'ok';
+            return `<div class="trk-tile trk-tile--act" data-category="actions" data-key="${def.name}">
+                <div class="trk-tile-value">${def.symbol}</div>
+                <div class="trk-tile-total">×${total} in deck</div>
+                <div class="trk-tile-counter">
+                    <button class="trk-tile-btn" data-delta="-">−</button>
+                    <span class="trk-tile-drawn">${drawn}</span>
+                    <button class="trk-tile-btn" data-delta="+">+</button>
+                </div>
+                <div class="trk-tile-left ${leftCls}">${left} left</div>
+            </div>`;
         }).join('');
     }
 }
 
-function toggleTrackerCard(cardId) {
-    if (analyzerState.seenCardIds.has(cardId)) analyzerState.seenCardIds.delete(cardId);
-    else analyzerState.seenCardIds.add(cardId);
-    renderTrackerGrids();
-    renderTrackerStats();
-    renderBustPanel();
-    renderDistributionChart();
-    if (activeTab === 'analyzer') renderAnalyzer();
-}
 
 function renderTrackerStats() {
     const el = document.getElementById('trk-stats');
     if (!el) return;
-    const rem = getRemainingDeck(analyzerState.seenCardIds);
-    const rN = rem.filter(c => c.type === 'number').length;
-    const rM = rem.filter(c => c.type === 'modifier').length;
-    const rA = rem.filter(c => c.type === 'action').length;
+    const remaining = buildTrackerDeck();
+    const rN = remaining.filter(c => c.type === 'number').length;
+    const rM = remaining.filter(c => c.type === 'modifier').length;
+    const rA = remaining.filter(c => c.type === 'action').length;
+    const drawn = trkTotalDrawn();
     el.innerHTML = [
-        ['REMAINING', rem.length, true],
-        ['NUMBERS',   rN,        false],
-        ['MODIFIERS', rM,        false],
-        ['ACTIONS',   rA,        false],
-        ['SEEN',      analyzerState.seenCardIds.size, false],
+        ['REMAINING', remaining.length, true],
+        ['NUMBERS',   rN,               false],
+        ['MODIFIERS', rM,               false],
+        ['ACTIONS',   rA,               false],
+        ['DRAWN',     drawn,            false],
     ].map(([lbl, val, hi]) => `
         <div class="trk-stat-item">
             <div class="trk-stat-lbl">${lbl}</div>
@@ -2030,7 +2107,7 @@ function renderBustPanel() {
         return;
     }
 
-    const remaining = getRemainingDeck(analyzerState.seenCardIds);
+    const remaining = buildTrackerDeck();
     const bp = computeBustProbability(handNumbers, remaining);
     const bpPct = Math.round(bp * 100);
     const bpCls = bpPct < 20 ? 'low' : bpPct < 35 ? 'mid' : 'high';
