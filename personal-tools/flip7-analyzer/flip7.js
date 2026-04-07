@@ -2196,6 +2196,66 @@ function renderDistributionChart() {
         </div>`;
 }
 
+function loadGameDeckToTracker() {
+    if (gameState.phase === 'setup') {
+        alert('No active game. Start a game in the Simulator tab first.');
+        return;
+    }
+    if (trkTotalDrawn() > 0 && !confirm('This will overwrite your current tracker data with the current game deck state. Continue?')) return;
+
+    // Match tracker deck count to current game deck count
+    trackerState.numDecks = simConfig.deckCount;
+    document.getElementById('trk-deck-display').textContent = trackerState.numDecks;
+
+    // Reset all drawn counts to 0
+    for (const k of Object.keys(trackerState.drawn.numbers))  trackerState.drawn.numbers[k]  = 0;
+    for (const k of Object.keys(trackerState.drawn.modifiers)) trackerState.drawn.modifiers[k] = 0;
+    for (const k of Object.keys(trackerState.drawn.actions))   trackerState.drawn.actions[k]   = 0;
+
+    // Count how many of each card type are still in the draw pile
+    const deckNumbers   = {};
+    const deckModifiers = {};
+    const deckActions   = {};
+
+    for (const card of gameState.deck) {
+        if (card.type === 'number')   deckNumbers[card.value]    = (deckNumbers[card.value]    ?? 0) + 1;
+        if (card.type === 'modifier') deckModifiers[card.symbol] = (deckModifiers[card.symbol] ?? 0) + 1;
+        if (card.type === 'action')   deckActions[card.name]     = (deckActions[card.name]     ?? 0) + 1;
+    }
+
+    // drawn = total - inDeckCount
+    for (let v = 0; v <= 12; v++) {
+        const total = trkTotal('numbers', v);
+        trackerState.drawn.numbers[v] = Math.max(0, total - (deckNumbers[v] ?? 0));
+    }
+    for (const def of MODIFIER_DEFS) {
+        const total = trkTotal('modifiers', def.symbol);
+        trackerState.drawn.modifiers[def.symbol] = Math.max(0, total - (deckModifiers[def.symbol] ?? 0));
+    }
+    for (const def of ACTION_DEFS) {
+        const total = trkTotal('actions', def.name);
+        trackerState.drawn.actions[def.name] = Math.max(0, total - (deckActions[def.name] ?? 0));
+    }
+
+    renderTracker();
+    if (activeTab === 'analyzer') renderAnalyzer();
+}
+
+function importTrackerDeckToGame() {
+    if (gameState.phase === 'setup') {
+        alert('No active game. Start a game in the Simulator tab first.');
+        return;
+    }
+    if (!confirm('This will replace the current game\'s draw pile with the tracker\'s remaining cards. Continue?')) return;
+
+    const newDeck = shuffle(buildTrackerDeck());
+    gameState.deck = newDeck;
+
+    // Update the draw pile button label
+    const drawBtn = document.getElementById('sim-draw-btn');
+    if (drawBtn) drawBtn.textContent = `DRAW PILE · ${newDeck.length}`;
+}
+
 
 /* ══════════════════════════════════════════════════════════════════
    §10 INITIALIZATION
