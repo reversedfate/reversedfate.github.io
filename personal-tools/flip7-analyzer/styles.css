@@ -1238,6 +1238,45 @@ a:hover { color: var(--red); }
 .card-reveal-overlay .card-corner      { font-size: 20px; top: 12px; left: 12px; opacity: 0.85; }
 .card-reveal-overlay .playing-card::after { font-size: 20px; bottom: 12px; right: 12px; }
 
+/* Vibrant solid backgrounds for modifier/action cards in reveal — matches number card style */
+.card-reveal-overlay .playing-card.modifier {
+    background: var(--clr-modifier);
+    color: #fff;
+    border-color: rgba(255,255,255,0.35);
+    box-shadow: 0 20px 100px rgba(10,138,96,0.5);
+}
+.card-reveal-overlay .playing-card.action[data-action="FlipThree"] {
+    background: var(--red);
+    color: #fff;
+    border-color: rgba(255,255,255,0.35);
+    box-shadow: 0 20px 100px rgba(212,43,56,0.5);
+}
+.card-reveal-overlay .playing-card.action[data-action="SecondChance"] {
+    background: var(--gold);
+    color: #fff;
+    border-color: rgba(255,255,255,0.35);
+    box-shadow: 0 20px 100px rgba(184,135,10,0.5);
+}
+.card-reveal-overlay .playing-card.action[data-action="Freeze"] {
+    background: var(--teal);
+    color: #fff;
+    border-color: rgba(255,255,255,0.35);
+    box-shadow: 0 20px 100px rgba(10,153,112,0.5);
+}
+/* Larger symbol text for modifier/action cards in reveal (override the 11px hand-card rule) */
+.card-reveal-overlay .playing-card.modifier .card-value-main,
+.card-reveal-overlay .playing-card.action .card-value-main { font-size: 52px; }
+
+/* Subtitle line (e.g. "FLIP THREE forced draw") */
+.reveal-subtitle {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--txt-dim);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: -8px;
+}
+
 .reveal-cross {
     position: absolute;
     inset: 0;
