@@ -1234,6 +1234,36 @@ const SoundEngine = (() => {
         });
     }
 
+    // Sad trombone — wah-wah-wah-waaah descending glide
+    function sadTrombone() {
+        go(c => {
+            const t = c.currentTime;
+            // Three short "wah" punches followed by a long descending wail
+            const wahs = [[440, 370, 0.00, 0.18], [370, 311, 0.22, 0.18], [311, 261, 0.44, 0.18]];
+            wahs.forEach(([f0, f1, dt, dur]) => {
+                const o = c.createOscillator();
+                o.type = 'sawtooth';
+                o.frequency.setValueAtTime(f0, t + dt);
+                o.frequency.exponentialRampToValueAtTime(f1, t + dt + dur);
+                const g = c.createGain();
+                g.gain.setValueAtTime(0.22, t + dt);
+                g.gain.exponentialRampToValueAtTime(0.001, t + dt + dur);
+                o.connect(g); g.connect(c.destination);
+                o.start(t + dt); o.stop(t + dt + dur + 0.02);
+            });
+            // Long descending wail: 261 → 130 over ~1.1 s
+            const o2 = c.createOscillator();
+            o2.type = 'sawtooth';
+            o2.frequency.setValueAtTime(261, t + 0.66);
+            o2.frequency.exponentialRampToValueAtTime(130, t + 1.78);
+            const g2 = c.createGain();
+            g2.gain.setValueAtTime(0.26, t + 0.66);
+            g2.gain.exponentialRampToValueAtTime(0.001, t + 1.78);
+            o2.connect(g2); g2.connect(c.destination);
+            o2.start(t + 0.66); o2.stop(t + 1.80);
+        });
+    }
+
     // Riffle shuffle — 5 quick noise bursts
     function shuffle() {
         go(c => {
@@ -1247,7 +1277,7 @@ const SoundEngine = (() => {
         cardDraw, cardRevealGood, cardRevealBust,
         stay, aiStay, bust, flip7,
         freeze, flipThree, secondChanceSave, secondChanceGet,
-        roundEnd, gameOver, shuffle,
+        roundEnd, gameOver, sadTrombone, shuffle,
     };
 })();
 
@@ -1891,11 +1921,12 @@ function showRoundEnd() {
 }
 
 function showGameOver() {
-    SoundEngine.gameOver();
-    const el = document.getElementById('sim-game-over');
-    if (!el) return;
     const sorted = [...gameState.players].sort((a, b) => b.totalScore - a.totalScore);
     const winner = sorted[0];
+    const humanWon = winner.isHuman;
+    if (humanWon) SoundEngine.gameOver(); else SoundEngine.sadTrombone();
+    const el = document.getElementById('sim-game-over');
+    if (!el) return;
     document.getElementById('sim-winner-text').innerHTML =
         `${winner.isHuman ? '▸' : '◦'} ${winner.name}<br><span style="font-size:20px;color:var(--gold)">${winner.totalScore} pts</span>`;
     document.getElementById('sim-final-scores').innerHTML = sorted.map((p, i) => `
