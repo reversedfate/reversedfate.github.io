@@ -659,8 +659,8 @@ function dealOneCard() {
                 const result = processCard(target, card);
                 ft.cardsLeft--;
                 if (result === 'flip7') { SoundEngine.flip7(); gameState.flipThreeState = null; endRound('flip7'); renderSimulator(); setTimeout(() => showRoundEnd(), 600); return; }
-                if (result === 'bust') { SoundEngine.bust(); gameState.flipThreeState = null; renderSimulator(); return; }
-                if (result === 'second-chance') { SoundEngine.secondChanceSave(); gameState.flipThreeState = null; renderSimulator(); return; }
+                if (result === 'bust') { SoundEngine.bust(); gameState.flipThreeState = null; renderSimulator(); setTimeout(() => continueGame(), getVizDelay()); return; }
+                if (result === 'second-chance') { SoundEngine.secondChanceSave(); gameState.flipThreeState = null; renderSimulator(); setTimeout(() => continueGame(), getVizDelay()); return; }
                 if (ft.cardsLeft <= 0) {
                     gameState.flipThreeState = null;
                     const pending = target.actionCards.filter(c => c.name === 'Freeze' || c.name === 'FlipThree');
@@ -732,13 +732,30 @@ function dealOneCard() {
     if (result.startsWith('action:')) {
         const name = result.split(':')[1];
         const ac = player.actionCards[player.actionCards.length - 1];
+
+        // Helper: show card reveal for human target, apply action in dismiss callback, then continue
+        function applyActionWithReveal(t2, subtitle, afterFn) {
+            if (t2.isHuman && simConfig.animations) {
+                showCardReveal(t2, ac, () => {
+                    afterFn();
+                    gameState.currentDealTarget = nextDealTarget();
+                    if (gameState.currentDealTarget === -1) { endRound('all-done'); setTimeout(() => showRoundEnd(), 400); return; }
+                    renderSimulator();
+                    setTimeout(() => continueGame(), getVizDelay());
+                }, { subtitle });
+                return true; // caller should return 'wait-reveal'
+            }
+            afterFn();
+            return false;
+        }
+
         if (name === 'SecondChance') {
             if (player.secondChanceActive) {
                 // Already holding one — give to another (AI gives to lowest-threat target)
                 const t2 = aiChooseTarget(player, 'SecondChance');
                 if (t2) {
                     addLog(`${player.name} already has Second Chance — passing it on`, 'reasoning');
-                    resolveAction(player, ac, t2);
+                    if (applyActionWithReveal(t2, `${player.name} gives you Second Chance`, () => resolveAction(player, ac, t2))) return 'wait-reveal';
                 } else {
                     // No valid target — discard
                     player.actionCards = player.actionCards.filter(c => c.id !== ac.id);
@@ -749,7 +766,13 @@ function dealOneCard() {
                 player.secondChanceActive = true;
                 addLog(`${player.name} holds Second Chance`);
             }
+        } else if (name === 'Freeze') {
+            const t2 = aiChooseTarget(player, name);
+            if (t2) {
+                if (applyActionWithReveal(t2, `${player.name} freezes you!`, () => resolveAction(player, ac, t2))) return 'wait-reveal';
+            }
         } else {
+            // FlipThree — resolveAction sets up flipThreeState; forced draws are shown separately
             const t2 = aiChooseTarget(player, name);
             if (t2) resolveAction(player, ac, t2);
         }
