@@ -1255,6 +1255,27 @@ function showCardReveal(player, card, onDismiss) {
 
     (document.getElementById('sim-game') || document.body).appendChild(overlay);
 
+    // Mouse parallax tilt on the reveal card
+    overlay.addEventListener('mousemove', e => {
+        const cardEl = overlay.querySelector('.card-reveal-overlay .playing-card, .playing-card');
+        if (!cardEl) return;
+        const rect = cardEl.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top  + rect.height / 2;
+        const dx = (e.clientX - cx) / (rect.width  / 2);
+        const dy = (e.clientY - cy) / (rect.height / 2);
+        const tiltX = -dy * 14;
+        const tiltY =  dx * 10;
+        cardEl.style.animation = 'none';
+        cardEl.style.transform = `perspective(700px) rotateX(${tiltX}deg) rotateY(${tiltY}deg) translateY(-6px) scale(1.03)`;
+    });
+    overlay.addEventListener('mouseleave', () => {
+        const cardEl = overlay.querySelector('.playing-card');
+        if (!cardEl) return;
+        cardEl.style.transform = '';
+        cardEl.style.animation = '';
+    });
+
     let dismissed = false;
     let autoTimer = null;
 

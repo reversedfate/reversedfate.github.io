@@ -1224,6 +1224,15 @@ a:hover { color: var(--red); }
     border-radius: 16px;
     box-shadow: 0 20px 100px rgba(0,0,0,0.4);
     position: relative;
+    opacity: 1;
+    transform: none;
+    transition: transform 0.12s ease;
+    animation: card-reveal-float 3s ease-in-out infinite;
+}
+
+@keyframes card-reveal-float {
+    0%, 100% { transform: translateY(0px); }
+    50%       { transform: translateY(-10px); }
 }
 .card-reveal-overlay .card-value-main { font-size: 72px; font-weight: 900; }
 .card-reveal-overlay .card-corner      { font-size: 20px; top: 12px; left: 12px; opacity: 0.85; }
