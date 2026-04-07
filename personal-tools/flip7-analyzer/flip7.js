@@ -1772,35 +1772,81 @@ function esc(s) {
 
 function initAnalyzer() {
     buildAnalyzerChips();
-    document.getElementById('ana-reset-seen').addEventListener('click', () => {
-        analyzerState.seenCardIds.clear();
+
+    // Remove old RESET SEEN button handler (button removed from HTML in Task 3)
+    // Deck mode switcher
+    document.getElementById('ana-deck-seg')?.addEventListener('click', e => {
+        const btn = e.target.closest('.ana-deck-btn');
+        if (!btn) return;
+        analyzerState.deckMode = btn.dataset.mode;
+        document.querySelectorAll('.ana-deck-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === analyzerState.deckMode));
+        buildAnalyzerChips();  // refresh badges for new deck
         renderAnalyzer();
-        if (activeTab === 'tracker') renderTracker();
+    });
+
+    // Show counts toggle
+    document.getElementById('ana-show-counts-toggle')?.addEventListener('click', () => {
+        analyzerState.showCounts = !analyzerState.showCounts;
+        document.getElementById('ana-show-counts-toggle').classList.toggle('on', analyzerState.showCounts);
+        buildAnalyzerChips();  // add/remove badges
+        renderAnalyzer();
+    });
+
+    // EV breakdown toggle — delegated since it's inside dynamically rendered HTML
+    document.getElementById('ana-results-panel')?.addEventListener('click', e => {
+        if (e.target.closest('#ana-ev-breakdown-toggle')) {
+            analyzerState.evBreakdownOpen = !analyzerState.evBreakdownOpen;
+            renderAnalyzer();
+        }
     });
 }
 
 function buildAnalyzerChips() {
+    const remaining = getAnalyzerDeck();
+    const showCounts = analyzerState.showCounts;
+
+    function countRemaining(type, matchFn) {
+        if (!showCounts) return null;
+        return remaining.filter(c => c.type === type && matchFn(c)).length;
+    }
+
+    function badge(count) {
+        if (count === null) return '';
+        return `<span class="ana-count-badge${count === 0 ? ' exhausted' : ''}">${count}</span>`;
+    }
+
     const numEl = document.getElementById('ana-number-chips');
     if (numEl) {
-        numEl.innerHTML = Array.from({length: 13}, (_, v) =>
-            `<div class="sel-chip number" data-type="number" data-value="${v}" data-max="${v === 0 ? 1 : v}">${v}</div>`
-        ).join('');
+        numEl.innerHTML = Array.from({ length: 13 }, (_, v) => {
+            const cnt = countRemaining('number', c => c.value === v);
+            const sel = analyzerState.handNumbers.includes(v) ? ' selected' : '';
+            const dim = (cnt === 0 && showCounts) ? ' dim' : '';
+            return `<div class="sel-chip number${sel}${dim}" data-type="number" data-value="${v}" data-max="${v === 0 ? 1 : v}">${badge(cnt)}${v}</div>`;
+        }).join('');
         numEl.querySelectorAll('.sel-chip').forEach(c => c.addEventListener('click', () => onNumberChip(c)));
     }
 
     const modEl = document.getElementById('ana-modifier-chips');
     if (modEl) {
-        modEl.innerHTML = MODIFIER_DEFS.map(d =>
-            `<div class="sel-chip modifier" data-symbol="${d.symbol}" data-isx2="${d.isX2}" data-value="${d.value}" data-max="${d.count}">${d.symbol}</div>`
-        ).join('');
+        modEl.innerHTML = MODIFIER_DEFS.map(d => {
+            const cnt = countRemaining('modifier', c => c.symbol === d.symbol);
+            const val = d.isX2 ? 'x2' : d.value;
+            const selCount = analyzerState.handModifiers.filter(m => m === val).length;
+            const sel = selCount > 0 ? ' selected' : '';
+            const dim = (cnt === 0 && showCounts) ? ' dim' : '';
+            return `<div class="sel-chip modifier${sel}${dim}" data-symbol="${d.symbol}" data-isx2="${d.isX2}" data-value="${d.value}" data-max="${d.count}">${badge(cnt)}${d.symbol}</div>`;
+        }).join('');
         modEl.querySelectorAll('.sel-chip').forEach(c => c.addEventListener('click', () => onModifierChip(c)));
     }
 
     const actEl = document.getElementById('ana-action-chips');
     if (actEl) {
-        actEl.innerHTML = ACTION_DEFS.map(d =>
-            `<div class="sel-chip action" data-name="${d.name}">${d.symbol}</div>`
-        ).join('');
+        actEl.innerHTML = ACTION_DEFS.map(d => {
+            const cnt = countRemaining('action', c => c.name === d.name);
+            const sel = analyzerState.handActions.includes(d.name) ? ' selected' : '';
+            const dim = (cnt === 0 && showCounts) ? ' dim' : '';
+            return `<div class="sel-chip action${sel}${dim}" data-name="${d.name}">${badge(cnt)}${d.symbol}</div>`;
+        }).join('');
         actEl.querySelectorAll('.sel-chip').forEach(c => c.addEventListener('click', () => onActionChip(c)));
     }
 }
@@ -1845,15 +1891,17 @@ function onActionChip(chip) {
 }
 
 function recomputeAndRender() {
+    buildAnalyzerChips();  // rebuild chips (updates badges + selection state)
     renderAnalyzer();
     if (activeTab === 'tracker') renderBustPanel();
 }
 
 function renderAnalyzer() {
-    const { handNumbers, handModifiers, handActions, seenCardIds } = analyzerState;
-    const remaining = getRemainingDeck(seenCardIds);
+    const { handNumbers, handModifiers, handActions } = analyzerState;
+    const remaining = getAnalyzerDeck();
     const bp = computeBustProbability(handNumbers, remaining);
-    const { evHit, currentScore } = computeExpectedValue(handNumbers, handModifiers, remaining);
+    const hasSC = analyzerState.handActions.includes('SecondChance');
+    const { evHit, currentScore, breakdown } = computeExpectedValue(handNumbers, handModifiers, remaining, hasSC);
     const rec = getRecommendation(bp, evHit, handNumbers.length);
 
     // Hand display
@@ -1907,16 +1955,22 @@ function renderAnalyzer() {
 
                 <div class="analysis-block">
                     <div class="analysis-label">EXPECTED VALUE</div>
-                    <div class="ev-grid">
-                        <div class="ev-cell ev-hit">
-                            <div class="ev-cell-label">IF YOU HIT</div>
-                            <div class="ev-cell-value ${evCls}">${evHit >= 0 ? '+' : ''}${evHit.toFixed(1)}</div>
+                    <div class="ev-header-row">
+                        <div class="ev-grid">
+                            <div class="ev-cell ev-hit">
+                                <div class="ev-cell-label">IF YOU HIT</div>
+                                <div class="ev-cell-value ${evCls}">${evHit >= 0 ? '+' : ''}${evHit.toFixed(1)}</div>
+                            </div>
+                            <div class="ev-cell ev-stay">
+                                <div class="ev-cell-label">IF YOU STAY</div>
+                                <div class="ev-cell-value">+0.0</div>
+                            </div>
                         </div>
-                        <div class="ev-cell ev-stay">
-                            <div class="ev-cell-label">IF YOU STAY</div>
-                            <div class="ev-cell-value">+0.0</div>
-                        </div>
+                        <button class="ev-breakdown-btn" id="ana-ev-breakdown-toggle">
+                            ${analyzerState.evBreakdownOpen ? 'Hide ▴' : 'Full breakdown ▾'}
+                        </button>
                     </div>
+                    ${analyzerState.evBreakdownOpen ? '<div class="ev-bd-panel"><div class="ev-bd-note">Breakdown coming in Task 8.</div></div>' : ''}
                 </div>
 
                 <div class="analysis-block">
@@ -1930,9 +1984,12 @@ function renderAnalyzer() {
     }
 
     // Deck context
+    const deckLabel = { full: 'Full deck', game: 'Current game draw pile', tracker: 'Card tracker deck' }[analyzerState.deckMode] || 'Full deck';
     document.getElementById('ana-remaining-count').textContent = remaining.length;
     document.getElementById('ana-remaining-numbers').textContent = remaining.filter(c => c.type === 'number').length;
-    document.getElementById('ana-seen-count').textContent = seenCardIds.size;
+    document.getElementById('ana-seen-count').textContent = trkTotalDrawn();
+    const noteEl = document.querySelector('.ctx-note');
+    if (noteEl) noteEl.textContent = `Evaluating against: ${deckLabel}`;
 }
 
 
