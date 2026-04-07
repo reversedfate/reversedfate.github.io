@@ -27,6 +27,7 @@ const simConfig = {
     vizSpeed:    'normal',  // 'instant' | 'fast' | 'normal' | 'slow'
     animations:  true,
     sounds:      true,
+    showBustProb: false,
     playerCount: 2,
     deckCount:   1,         // 1–4 decks shuffled together
 };
@@ -590,7 +591,7 @@ function resolveAction(srcPlayer, actionCard, targetPlayer) {
         SoundEngine.flipThree();
         addLog(`${srcPlayer.name} played FLIP THREE on ${targetPlayer.name}!`, 'action');
         if (gameState.flipThreeState) gameState.flipThreeState.cardsLeft += 3;
-        else gameState.flipThreeState = { targetIdx: targetPlayer.idx, cardsLeft: 3 };
+        else gameState.flipThreeState = { targetIdx: targetPlayer.idx, cardsLeft: 3, sourceName: srcPlayer.name };
     } else if (actionCard.name === 'SecondChance') {
         SoundEngine.secondChanceGet();
         addLog(`${srcPlayer.name} gave Second Chance to ${targetPlayer.name}!`, 'action');
@@ -644,6 +645,26 @@ function dealOneCard() {
         const card = drawCard();
         if (!card) { endRound('deck-empty'); return false; }
         SoundEngine.cardDraw();
+
+        // Show card reveal for human target of FlipThree forced draw
+        if (target.isHuman && simConfig.animations) {
+            const subtitle = `FLIP THREE by ${ft.sourceName ?? 'opponent'}`;
+            showCardReveal(target, card, () => {
+                const result = processCard(target, card);
+                ft.cardsLeft--;
+                if (result === 'flip7') { SoundEngine.flip7(); gameState.flipThreeState = null; endRound('flip7'); renderSimulator(); setTimeout(() => showRoundEnd(), 600); return; }
+                if (result === 'bust') { SoundEngine.bust(); gameState.flipThreeState = null; renderSimulator(); return; }
+                if (result === 'second-chance') { SoundEngine.secondChanceSave(); gameState.flipThreeState = null; renderSimulator(); return; }
+                if (ft.cardsLeft <= 0) {
+                    gameState.flipThreeState = null;
+                    const pending = target.actionCards.filter(c => c.name === 'Freeze' || c.name === 'FlipThree');
+                    if (pending.length) { queueActionPrompt(target, pending[0]); renderSimulator(); return; }
+                }
+                renderSimulator();
+                setTimeout(() => continueGame(), getVizDelay());
+            }, { subtitle });
+            return 'wait-reveal';
+        }
 
         const result = processCard(target, card);
         ft.cardsLeft--;
@@ -875,7 +896,7 @@ function continueGame() {
 
     const result = dealOneCard();
     if (result === false) { renderSimulator(); setTimeout(() => showRoundEnd(), 600); return; }
-    if (result === 'wait-human' || result === 'wait-action') { renderSimulator(); return; }
+    if (result === 'wait-human' || result === 'wait-action' || result === 'wait-reveal') { renderSimulator(); return; }
     renderSimulator();
 
     const delay = getVizDelay();
@@ -1221,11 +1242,11 @@ const SoundEngine = (() => {
    §6b  ANIMATION HELPERS
    ══════════════════════════════════════════════════════════════════ */
 
-function showCardReveal(player, card, onDismiss) {
+function showCardReveal(player, card, onDismiss, opts = {}) {
     const dur = getAnimDuration();
     if (dur === 0) { onDismiss(); return; }
 
-    const timeoutMs = Math.max(1800, Math.min(3000, dur * 8));
+    const timeoutMs = Math.max(5400, Math.min(9000, dur * 24));
     const isDupe = card.type === 'number' && player.numberCards.some(c => c.value === card.value);
     const label = isDupe
         ? 'DUPLICATE — BUST!'
@@ -1239,15 +1260,19 @@ function showCardReveal(player, card, onDismiss) {
     overlay.style.setProperty('--reveal-timeout', timeoutMs + 'ms');
     const corner = card.type === 'number' ? `<span class="card-corner">${card.value}</span>` : '';
     const typeClass = card.type + (isDupe ? ' bust-card' : '');
-    const dataValue = card.type === 'number' ? ` data-value="${card.value}"` : '';
+    const dataAttr = card.type === 'number' ? ` data-value="${card.value}"`
+                   : card.type === 'action'  ? ` data-action="${card.name}"`
+                   : '';
+    const subtitleHtml = opts.subtitle ? `<div class="reveal-subtitle">${esc(opts.subtitle)}</div>` : '';
     overlay.innerHTML = `
         <div class="card-reveal-dialog${isDupe ? ' reveal-bad' : ''}">
             <div class="reveal-card-wrap">
-                <div class="playing-card ${typeClass}"${dataValue}>
+                <div class="playing-card ${typeClass}"${dataAttr}>
                     ${corner}<span class="card-value-main">${card.symbol}</span>
                 </div>
                 ${isDupe ? '<div class="reveal-cross">✕</div>' : ''}
             </div>
+            ${subtitleHtml}
             <div class="reveal-label">${label}</div>
             <div class="reveal-hint">CLICK TO CONTINUE</div>
             <div class="reveal-progress-bar"></div>
@@ -1255,17 +1280,17 @@ function showCardReveal(player, card, onDismiss) {
 
     (document.getElementById('sim-game') || document.body).appendChild(overlay);
 
-    // Mouse parallax tilt on the reveal card
+    // Mouse parallax tilt on the reveal card (sqrt-based soft limit)
     overlay.addEventListener('mousemove', e => {
-        const cardEl = overlay.querySelector('.card-reveal-overlay .playing-card, .playing-card');
+        const cardEl = overlay.querySelector('.playing-card');
         if (!cardEl) return;
         const rect = cardEl.getBoundingClientRect();
         const cx = rect.left + rect.width / 2;
         const cy = rect.top  + rect.height / 2;
-        const dx = (e.clientX - cx) / (rect.width  / 2);
-        const dy = (e.clientY - cy) / (rect.height / 2);
-        const tiltX = -dy * 14;
-        const tiltY =  dx * 10;
+        const rawDx = (e.clientX - cx) / (rect.width  / 2);
+        const rawDy = (e.clientY - cy) / (rect.height / 2);
+        const tiltY =  Math.sign(rawDx) * Math.sqrt(Math.abs(rawDx)) * 10;
+        const tiltX = -Math.sign(rawDy) * Math.sqrt(Math.abs(rawDy)) * 12;
         cardEl.style.animation = 'none';
         cardEl.style.transform = `perspective(700px) rotateX(${tiltX}deg) rotateY(${tiltY}deg) translateY(-6px) scale(1.03)`;
     });
@@ -1547,6 +1572,18 @@ function initSimulator() {
         }
     });
 
+    // ── Bust % toggle ──
+    document.getElementById('sim-bust-prob-btn')?.addEventListener('click', () => {
+        simConfig.showBustProb = !simConfig.showBustProb;
+        const btn = document.getElementById('sim-bust-prob-btn');
+        if (btn) {
+            btn.textContent = simConfig.showBustProb ? 'BUST %: ON' : 'BUST %: OFF';
+            btn.classList.toggle('autoplay-on',  simConfig.showBustProb);
+            btn.classList.toggle('autoplay-off', !simConfig.showBustProb);
+        }
+        renderSimulator();
+    });
+
     // ── Animations toggle ──
     document.getElementById('sim-anim-btn')?.addEventListener('click', () => {
         simConfig.animations = !simConfig.animations;
@@ -1617,7 +1654,7 @@ function renderPlayerCard(player, rank) {
 
     // Bust probability badge for any active player with number cards
     let bustBadge = '';
-    if (isPlayerActive(player) && player.numberCards.length > 0) {
+    if (simConfig.showBustProb && isPlayerActive(player) && player.numberCards.length > 0) {
         const bp    = computeBustProbability(player.numberCards.map(c => c.value), [...gameState.deck]);
         const bpPct = Math.round(bp * 100);
         const bpCls = bpPct < 20 ? 'bp-low' : bpPct < 35 ? 'bp-mid' : 'bp-high';
@@ -1741,18 +1778,23 @@ function renderSimulator() {
         if (isHumanTurn) {
             if (statusLabel) statusLabel.textContent = 'YOUR TURN';
             controls.classList.remove('risk-high', 'ctrl-waiting', 'ctrl-round-over');
-            const remaining = [...gameState.deck];
-            const bp = computeBustProbability(humanPlayer.numberCards.map(c => c.value), remaining);
-            const bpPct = Math.round(bp * 100);
-            const bpCls = bpPct < 20 ? 'risk-low' : bpPct < 35 ? 'risk-mid' : 'risk-high';
-            controls.classList.toggle('risk-high', bpPct >= 35);
             const ind = document.getElementById('sim-bust-indicator');
-            if (ind) {
-                ind.className = 'bust-indicator-bar ' + bpCls;
-                const numCount = humanPlayer.numberCards.length;
-                ind.innerHTML = numCount > 0
-                    ? `<span class="bust-label">BUST RISK</span><span class="bust-val">${bpPct}%</span><span class="bust-hint"> · ${numCount} numbers held</span>`
-                    : `<span class="bust-label">FIRST CARD — NO BUST RISK</span>`;
+            if (simConfig.showBustProb) {
+                const remaining = [...gameState.deck];
+                const bp = computeBustProbability(humanPlayer.numberCards.map(c => c.value), remaining);
+                const bpPct = Math.round(bp * 100);
+                const bpCls = bpPct < 20 ? 'risk-low' : bpPct < 35 ? 'risk-mid' : 'risk-high';
+                controls.classList.toggle('risk-high', bpPct >= 35);
+                if (ind) {
+                    ind.className = 'bust-indicator-bar ' + bpCls;
+                    const numCount = humanPlayer.numberCards.length;
+                    ind.innerHTML = numCount > 0
+                        ? `<span class="bust-label">BUST RISK</span><span class="bust-val">${bpPct}%</span><span class="bust-hint"> · ${numCount} numbers held</span>`
+                        : `<span class="bust-label">FIRST CARD — NO BUST RISK</span>`;
+                }
+            } else {
+                controls.classList.remove('risk-high');
+                if (ind) ind.innerHTML = '';
             }
         } else if (isRoundOver) {
             if (statusLabel) statusLabel.textContent = gameState.phase === 'game_over' ? 'GAME OVER' : 'ROUND OVER';
