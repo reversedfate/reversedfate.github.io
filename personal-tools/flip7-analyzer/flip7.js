@@ -2150,65 +2150,50 @@ function renderDistributionChart() {
     const el = document.getElementById('trk-chart');
     if (!el) return;
 
-    const remaining = getRemainingDeck(analyzerState.seenCardIds);
+    // Build rows: numbers 0-12, then modifiers by symbol, then actions by name
+    const rows = [];
 
-    const BAR_W = 16, GAP = 5, H = 80, LABEL_H = 22, TOP_PAD = 16;
-    const TOTAL_H = H + LABEL_H + TOP_PAD;
-
-    // Build columns: 0-12 numbers, then gap, Mod, Act
-    const cols = [];
     for (let v = 0; v <= 12; v++) {
-        const total = v === 0 ? 1 : v;
-        const rem   = remaining.filter(c => c.type === 'number' && c.value === v).length;
-        cols.push({ label: String(v), total, rem, color: '#cad2ff', gapBefore: false });
+        const total = trkTotal('numbers', v);
+        const left  = trkLeft('numbers', v);
+        rows.push({ label: String(v), total, left, color: '#6272f0', type: 'number' });
     }
-    const totalMod = FULL_DECK.filter(c => c.type === 'modifier').length;
-    const remMod   = remaining.filter(c => c.type === 'modifier').length;
-    cols.push({ label: 'MOD', total: totalMod, rem: remMod, color: '#06d6a0', gapBefore: true });
+    for (const def of MODIFIER_DEFS) {
+        const total = trkTotal('modifiers', def.symbol);
+        const left  = trkLeft('modifiers', def.symbol);
+        rows.push({ label: def.symbol, total, left, color: '#06d6a0', type: 'modifier' });
+    }
+    for (const def of ACTION_DEFS) {
+        const total = trkTotal('actions', def.name);
+        const left  = trkLeft('actions', def.name);
+        rows.push({ label: def.symbol, total, left, color: '#e8b84b', type: 'action' });
+    }
 
-    const totalAct = FULL_DECK.filter(c => c.type === 'action').length;
-    const remAct   = remaining.filter(c => c.type === 'action').length;
-    cols.push({ label: 'ACT', total: totalAct, rem: remAct, color: '#e63946', gapBefore: false });
+    const maxTotal = Math.max(...rows.map(r => r.total), 1);
 
-    const maxTotal = Math.max(...cols.map(c => c.total), 1);
-
-    // Compute x positions (account for gap before MOD)
-    let xCursor = 4;
-    const positions = cols.map(col => {
-        if (col.gapBefore) xCursor += GAP * 2;
-        const x = xCursor;
-        xCursor += BAR_W + GAP;
-        return x;
-    });
-
-    const totalW = xCursor + 4;
-
-    const bars = cols.map((col, i) => {
-        const x = positions[i];
-        const remH  = Math.max(Math.round((col.rem / maxTotal) * H), col.rem > 0 ? 2 : 0);
-        const seenH = Math.max(Math.round(((col.total - col.rem) / maxTotal) * H), 0);
-
-        const remY   = TOP_PAD + (H - remH - seenH);
-        const seenY  = TOP_PAD + (H - seenH);
-        const labelY = TOP_PAD + H + 14;
-        const countY = remY - 3;
-
-        return `
-            ${seenH > 0 ? `<rect x="${x}" y="${seenY}" width="${BAR_W}" height="${seenH}" fill="#252830" rx="0"/>` : ''}
-            ${remH  > 0 ? `<rect x="${x}" y="${remY}"  width="${BAR_W}" height="${remH}"  fill="${col.color}" opacity="0.85" rx="2 2 0 0"/>` : ''}
-            <text x="${x + BAR_W/2}" y="${labelY}" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="8" fill="#3a3e4a">${col.label}</text>
-            ${col.rem > 0 ? `<text x="${x + BAR_W/2}" y="${countY}" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="8" fill="${col.color}">${col.rem}</text>` : ''}`;
-    }).join('');
-
-    // Legend
-    const lgX = totalW - 68;
-    const legend = `
-        <rect x="${lgX}" y="4" width="8" height="8" fill="#cad2ff" opacity="0.85" rx="1"/>
-        <text x="${lgX + 12}" y="12" font-family="IBM Plex Mono, monospace" font-size="8" fill="#3a3e4a">Remaining</text>
-        <rect x="${lgX}" y="18" width="8" height="8" fill="#252830" rx="1"/>
-        <text x="${lgX + 12}" y="26" font-family="IBM Plex Mono, monospace" font-size="8" fill="#3a3e4a">Seen</text>`;
-
-    el.innerHTML = `<svg viewBox="0 0 ${totalW} ${TOTAL_H}" width="100%" height="${TOTAL_H}" style="overflow:visible">${bars}${legend}</svg>`;
+    el.innerHTML = `
+        <div class="dist-chart">
+            <div class="dist-legend">
+                <span class="dist-legend-dot" style="background:#6272f0"></span>Numbers
+                <span class="dist-legend-dot" style="background:#06d6a0"></span>Modifiers
+                <span class="dist-legend-dot" style="background:#e8b84b"></span>Actions
+                <span class="dist-legend-dot dist-legend-dot--drawn"></span>Drawn
+            </div>
+            ${rows.map(r => {
+                const drawn    = r.total - r.left;
+                const remPct   = r.total > 0 ? (r.left  / maxTotal * 100).toFixed(1) : 0;
+                const drawnPct = r.total > 0 ? (drawn   / maxTotal * 100).toFixed(1) : 0;
+                const leftCls  = r.left === 0 ? 'exhausted' : r.left / r.total < 0.25 ? 'danger' : '';
+                return `<div class="dist-row">
+                    <div class="dist-row-label ${r.type}">${esc(r.label)}</div>
+                    <div class="dist-row-bar-wrap">
+                        <div class="dist-bar-remaining" style="width:${remPct}%; background:${r.color}"></div>
+                        <div class="dist-bar-drawn"      style="width:${drawnPct}%"></div>
+                    </div>
+                    <div class="dist-row-counts ${leftCls}">${r.left}<span class="dist-row-total">/${r.total}</span></div>
+                </div>`;
+            }).join('')}
+        </div>`;
 }
 
 
