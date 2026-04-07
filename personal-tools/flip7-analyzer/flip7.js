@@ -281,28 +281,128 @@ function applyScoring(numberValues, modifierValues, hasFlip7 = false) {
     return total;
 }
 
-function computeExpectedValue(handNumberValues, handModifierValues, remaining) {
-    if (!remaining.length) return { evHit: 0, currentScore: 0 };
+/**
+ * Compute expected value of hitting one card.
+ * @param {number[]} handNumberValues
+ * @param {(number|string)[]} handModifierValues  e.g. [4, 8, 'x2']
+ * @param {object[]} remaining  deck cards remaining
+ * @param {boolean} hasSecondChance  SC card active (negates first bust)
+ * @param {number} depth  recursion depth — FlipThree not recursed at depth>=1
+ * @returns {{ evHit: number, currentScore: number, breakdown: object }}
+ */
+function computeExpectedValue(handNumberValues, handModifierValues, remaining, hasSecondChance = false, depth = 0) {
+    if (!remaining.length) return { evHit: 0, currentScore: 0, breakdown: null };
     const currentScore = applyScoring(handNumberValues, handModifierValues, false);
-    let evHit = 0;
     const n = remaining.length;
+
+    const breakdown = {
+        bust:         { count: 0, prob: 0, avgDelta: -currentScore, weighted: 0 },
+        newNumber:    { count: 0, prob: 0, avgDelta: 0, weightedSum: 0, weighted: 0 },
+        modifier:     { count: 0, prob: 0, avgDelta: 0, weightedSum: 0, weighted: 0 },
+        flipThree:    { count: 0, prob: 0, evOf3Draws: 0, weighted: 0 },
+        secondChance: { count: 0, prob: 0, weighted: 0 },
+        freeze:       { count: 0, prob: 0, weighted: 0 },
+    };
+
+    let evHit = 0;
+    const handSet = new Set(handNumberValues);
+
     for (const card of remaining) {
         const w = 1 / n;
         let outcome = 0;
+
         if (card.type === 'number') {
-            if (handNumberValues.includes(card.value)) {
-                outcome = -currentScore;
+            if (handSet.has(card.value)) {
+                if (hasSecondChance) {
+                    // SC consumed — card discarded, hand unchanged, SC gone
+                    outcome = 0;
+                } else {
+                    // Bust
+                    outcome = -currentScore;
+                    breakdown.bust.count++;
+                    breakdown.bust.weighted += w * outcome;
+                }
             } else {
                 const nn = [...handNumberValues, card.value];
-                outcome = applyScoring(nn, handModifierValues, nn.length === FLIP7_COUNT) - currentScore;
+                const delta = applyScoring(nn, handModifierValues, nn.length === FLIP7_COUNT) - currentScore;
+                outcome = delta;
+                breakdown.newNumber.count++;
+                breakdown.newNumber.weightedSum += w * delta;
             }
         } else if (card.type === 'modifier') {
             const nm = [...handModifierValues, card.isX2 ? 'x2' : card.value];
-            outcome = applyScoring(handNumberValues, nm, false) - currentScore;
+            const delta = applyScoring(handNumberValues, nm, false) - currentScore;
+            outcome = delta;
+            breakdown.modifier.count++;
+            breakdown.modifier.weightedSum += w * delta;
+        } else if (card.type === 'action') {
+            if (card.name === 'FlipThree' && depth === 0) {
+                // 3 forced sequential draws — approximate as 3x single-step EV
+                const remWithout = remaining.filter(c => c.id !== card.id);
+                const ev3 = evOfFlipThreeDraws(handNumberValues, handModifierValues, remWithout, hasSecondChance);
+                outcome = ev3;
+                breakdown.flipThree.count++;
+                breakdown.flipThree.evOf3Draws = ev3;
+                breakdown.flipThree.weighted += w * ev3;
+            } else if (card.name === 'SecondChance' && !hasSecondChance && depth === 0) {
+                // Gain SC protection — value = EV improvement from having SC on next draw
+                // Only computed at depth=0 to prevent infinite recursion
+                const remWithout  = remaining.filter(c => c.id !== card.id);
+                const evWithSC    = computeExpectedValue(handNumberValues, handModifierValues, remWithout, true,  1).evHit;
+                const evWithoutSC = computeExpectedValue(handNumberValues, handModifierValues, remWithout, false, 1).evHit;
+                outcome = evWithSC - evWithoutSC;
+                breakdown.secondChance.count++;
+                breakdown.secondChance.weighted += w * outcome;
+            } else if (card.name === 'SecondChance') {
+                // Extra SC (already held), or SC at depth>=1 — no effect
+                outcome = 0;
+                breakdown.secondChance.count++;
+                // no EV contribution
+            } else {
+                // Freeze or FlipThree at depth>=1 — 0 effect on own hand
+                outcome = 0;
+                breakdown.freeze.count++;
+            }
         }
+
         evHit += w * outcome;
     }
-    return { evHit, currentScore };
+
+    // Finalize averages
+    // avgDelta = weighted sum x n / count  (weightedSum = sum delta/n, so sum_delta = weightedSum*n)
+    breakdown.bust.prob         = breakdown.bust.count / n;
+    breakdown.newNumber.prob    = breakdown.newNumber.count / n;
+    breakdown.newNumber.avgDelta = breakdown.newNumber.count > 0
+        ? breakdown.newNumber.weightedSum * n / breakdown.newNumber.count
+        : 0;
+    breakdown.newNumber.weighted = breakdown.newNumber.weightedSum;
+    breakdown.modifier.prob     = breakdown.modifier.count / n;
+    breakdown.modifier.avgDelta = breakdown.modifier.count > 0
+        ? breakdown.modifier.weightedSum * n / breakdown.modifier.count
+        : 0;
+    breakdown.modifier.weighted = breakdown.modifier.weightedSum;
+    breakdown.flipThree.prob    = breakdown.flipThree.count / n;
+    breakdown.secondChance.prob = breakdown.secondChance.count / n;
+    breakdown.freeze.prob       = breakdown.freeze.count / n;
+
+    return { evHit, currentScore, breakdown };
+}
+
+// Approximate EV of 3 forced sequential draws (FlipThree effect)
+// Uses single-step EV for each draw — deck not updated between steps (conservative approx.)
+function evOfFlipThreeDraws(handNums, handMods, remaining, hasSC) {
+    if (!remaining.length) return 0;
+    let total = 0;
+    // Draw 1
+    const r1 = computeExpectedValue(handNums, handMods, remaining, hasSC, 1);
+    total += r1.evHit;
+    // Draw 2 — approximate: same remaining (deck shrinks by ~1 but we don't know which card)
+    const r2 = computeExpectedValue(handNums, handMods, remaining, hasSC, 1);
+    total += r2.evHit;
+    // Draw 3
+    const r3 = computeExpectedValue(handNums, handMods, remaining, hasSC, 1);
+    total += r3.evHit;
+    return total;
 }
 
 function getRecommendation(bustProb, evHit, handSize) {
