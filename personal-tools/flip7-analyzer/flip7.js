@@ -189,10 +189,6 @@ function shuffle(arr) {
     return arr;
 }
 
-function getRemainingDeck(seenIds) {
-    return FULL_DECK.filter(c => !seenIds.has(c.id));
-}
-
 // Base count of a card type in a single deck
 function trkBaseCount(category, key) {
     if (category === 'numbers') return key === 0 ? 1 : key;
@@ -2428,9 +2424,7 @@ function importTrackerDeckToGame() {
     const newDeck = shuffle(buildTrackerDeck());
     gameState.deck = newDeck;
 
-    // Update the draw pile button label
-    const drawBtn = document.getElementById('sim-draw-btn');
-    if (drawBtn) drawBtn.textContent = `DRAW PILE · ${newDeck.length}`;
+    renderSimulator();
 }
 
 
