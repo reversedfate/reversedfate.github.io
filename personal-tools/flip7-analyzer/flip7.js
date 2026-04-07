@@ -517,7 +517,9 @@ function drawCard() {
         if (!available.length) return null; // truly empty — no cards anywhere
         gameState.deck = shuffle(available);
         gameState.discardThisRound = gameState.discardThisRound.filter(c => inHands.has(c.id));
-        addLog('Draw pile empty — discarded cards reshuffled back in!', 'action');
+        addLog('Draw pile empty — reshuffled discarded cards back in!', 'action');
+        // Fire shuffle animation as a visual overlay (non-blocking)
+        animateShuffle(() => {});
     }
     const card = gameState.deck.pop();
     gameState.discardThisRound.push(card);
@@ -658,14 +660,36 @@ function dealOneCard() {
             showCardReveal(target, card, () => {
                 const result = processCard(target, card);
                 ft.cardsLeft--;
-                if (result === 'flip7') { SoundEngine.flip7(); gameState.flipThreeState = null; endRound('flip7'); renderSimulator(); setTimeout(() => showRoundEnd(), 600); return; }
-                if (result === 'bust') { SoundEngine.bust(); gameState.flipThreeState = null; renderSimulator(); setTimeout(() => continueGame(), getVizDelay()); return; }
-                if (result === 'second-chance') { SoundEngine.secondChanceSave(); gameState.flipThreeState = null; renderSimulator(); setTimeout(() => continueGame(), getVizDelay()); return; }
-                if (ft.cardsLeft <= 0) {
+
+                // Round-ending outcome — return after scheduling round-end
+                if (result === 'flip7') {
+                    SoundEngine.flip7();
                     gameState.flipThreeState = null;
-                    const pending = target.actionCards.filter(c => c.name === 'Freeze' || c.name === 'FlipThree');
-                    if (pending.length) { queueActionPrompt(target, pending[0]); renderSimulator(); return; }
+                    endRound('flip7');
+                    renderSimulator();
+                    setTimeout(() => showRoundEnd(), 600);
+                    return;
                 }
+
+                // Play outcome sound
+                if (result === 'bust')          SoundEngine.bust();
+                if (result === 'second-chance') SoundEngine.secondChanceSave();
+
+                // Clear FlipThree on terminal outcomes or when all forced draws are done
+                if (result === 'bust' || result === 'second-chance') {
+                    gameState.flipThreeState = null;
+                } else if (ft.cardsLeft <= 0) {
+                    gameState.flipThreeState = null;
+                    // If target collected a Freeze/FlipThree card, let them play it
+                    const pending = target.actionCards.filter(c => c.name === 'Freeze' || c.name === 'FlipThree');
+                    if (pending.length) {
+                        queueActionPrompt(target, pending[0]);
+                        renderSimulator();
+                        return; // legitimate wait — human must choose a target
+                    }
+                }
+
+                // Always resume game loop — covers bust, SC, normal, action cards
                 renderSimulator();
                 setTimeout(() => continueGame(), getVizDelay());
             }, { subtitle });
@@ -966,11 +990,9 @@ function startNextRound() {
     gameState.round++;
     gameState.phase = 'playing';
     addLog(`Round ${gameState.round}`, 'round');
-    animateShuffle(() => {
-        resetRound();
-        renderSimulator();
-        setTimeout(() => continueGame(), 200);
-    });
+    resetRound();
+    renderSimulator();
+    setTimeout(() => continueGame(), 200);
 }
 
 
