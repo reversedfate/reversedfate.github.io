@@ -1982,6 +1982,14 @@ function renderEVBreakdown(breakdown, currentScore, remaining, handNums, hasSC) 
                             <td>${r.detail}</td>
                             <td>${fmtDelta(r.weighted)}</td>
                         </tr>`).join('')}
+                        ${hasSC && b.scBlocked?.count > 0 ? `
+                        <tr>
+                            <td>🛡 ${esc('Duplicate blocked by SC')}</td>
+                            <td>${b.scBlocked.count}</td>
+                            <td>${pctStr(b.scBlocked.prob)}</td>
+                            <td>Bust negated (SC consumed)</td>
+                            <td>${fmtDelta(0)}</td>
+                        </tr>` : ''}
                     </tbody>
                     <tfoot>
                         <tr class="ev-bd-total-row">
