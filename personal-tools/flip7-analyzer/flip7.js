@@ -1896,6 +1896,118 @@ function recomputeAndRender() {
     if (activeTab === 'tracker') renderBustPanel();
 }
 
+function renderEVBreakdown(breakdown, currentScore, remaining, handNums, hasSC) {
+    if (!breakdown) return '<div class="empty-state">No breakdown available</div>';
+    const n = remaining.length;
+    const b = breakdown;
+
+    function fmtDelta(d) {
+        const s = d >= 0 ? `+${d.toFixed(2)}` : d.toFixed(2);
+        const cls = d > 0 ? 'pos' : d < 0 ? 'neg' : 'neu';
+        return `<span class="ev-bd-${cls}">${s}</span>`;
+    }
+
+    function pctStr(p) { return (p * 100).toFixed(1) + '%'; }
+
+    const rows = [
+        {
+            icon: '💥', label: 'Bust (duplicate number)',
+            count: b.bust.count, prob: b.bust.prob,
+            detail: `−${currentScore} pts each`,
+            weighted: b.bust.weighted,
+        },
+        {
+            icon: '🔢', label: 'New number drawn',
+            count: b.newNumber.count, prob: b.newNumber.prob,
+            detail: `avg ${b.newNumber.count > 0 ? fmtDelta(b.newNumber.avgDelta) : '—'} pts`,
+            weighted: b.newNumber.weighted,
+        },
+        {
+            icon: '✚', label: 'Modifier card',
+            count: b.modifier.count, prob: b.modifier.prob,
+            detail: `avg ${b.modifier.count > 0 ? fmtDelta(b.modifier.avgDelta) : '—'} pts`,
+            weighted: b.modifier.weighted,
+        },
+        {
+            icon: '⟲', label: 'Flip Three (3 forced draws)',
+            count: b.flipThree.count, prob: b.flipThree.prob,
+            detail: b.flipThree.count > 0 ? `EV of 3 draws: ${fmtDelta(b.flipThree.evOf3Draws)}` : '— (none in deck)',
+            weighted: b.flipThree.weighted,
+        },
+        {
+            icon: '✦', label: `Second Chance (bust shield)${hasSC ? ' — already held, extras discarded' : ''}`,
+            count: b.secondChance.count, prob: b.secondChance.prob,
+            detail: hasSC ? 'No additional SC effect' : `Value: ${fmtDelta(b.secondChance.weighted / Math.max(b.secondChance.prob, 0.0001))} pts`,
+            weighted: b.secondChance.weighted,
+        },
+        {
+            icon: '❄', label: 'Freeze (no hand effect)',
+            count: b.freeze.count, prob: b.freeze.prob,
+            detail: '0 pts (played on opponent)',
+            weighted: 0,
+        },
+    ];
+
+    const totalEV = b.bust.weighted + b.newNumber.weighted + b.modifier.weighted
+                  + b.flipThree.weighted + b.secondChance.weighted;
+
+    return `
+        <div class="ev-bd-panel">
+            <div class="ev-bd-section">
+                <div class="ev-bd-title">HAND SCORE FORMULA</div>
+                <div class="ev-bd-formula">
+                    Numbers: ${handNums.join(' + ') || '—'} = <strong>${handNums.reduce((a,b)=>a+b,0)}</strong>
+                    &nbsp;·&nbsp; Current score: <strong>${currentScore}</strong>
+                    &nbsp;·&nbsp; Deck: <strong>${n}</strong> cards remaining
+                </div>
+            </div>
+            <div class="ev-bd-section">
+                <div class="ev-bd-title">OUTCOME TABLE</div>
+                <table class="ev-bd-table">
+                    <thead>
+                        <tr>
+                            <th>Outcome</th>
+                            <th>Cards</th>
+                            <th>Prob</th>
+                            <th>Effect</th>
+                            <th>Weighted EV</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows.map(r => `
+                        <tr>
+                            <td>${r.icon} ${esc(r.label)}</td>
+                            <td>${r.count}</td>
+                            <td>${pctStr(r.prob)}</td>
+                            <td>${r.detail}</td>
+                            <td>${fmtDelta(r.weighted)}</td>
+                        </tr>`).join('')}
+                    </tbody>
+                    <tfoot>
+                        <tr class="ev-bd-total-row">
+                            <td colspan="4">Total EV (hit)</td>
+                            <td>${fmtDelta(totalEV)}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            ${b.flipThree.count > 0 ? `
+            <div class="ev-bd-section">
+                <div class="ev-bd-title">FLIP THREE — 3 FORCED DRAWS (APPROXIMATE)</div>
+                <div class="ev-bd-note">If you draw a Flip Three, you are forced to take 3 more cards.
+                Each draw's EV is computed independently against the remaining deck (conservative approximation).
+                EV of all 3 draws combined: ${fmtDelta(b.flipThree.evOf3Draws)}</div>
+            </div>` : ''}
+            ${b.secondChance.count > 0 && !hasSC ? `
+            <div class="ev-bd-section">
+                <div class="ev-bd-title">SECOND CHANCE — BUST SHIELD VALUE</div>
+                <div class="ev-bd-note">Drawing Second Chance gives you protection against the next duplicate.
+                Value = EV improvement from having SC active vs. not having it.
+                Weighted contribution: ${fmtDelta(b.secondChance.weighted)}</div>
+            </div>` : ''}
+        </div>`;
+}
+
 function renderAnalyzer() {
     const { handNumbers, handModifiers, handActions } = analyzerState;
     const remaining = getAnalyzerDeck();
@@ -1970,7 +2082,7 @@ function renderAnalyzer() {
                             ${analyzerState.evBreakdownOpen ? 'Hide ▴' : 'Full breakdown ▾'}
                         </button>
                     </div>
-                    ${analyzerState.evBreakdownOpen ? '<div class="ev-bd-panel"><div class="ev-bd-note">Breakdown coming in Task 8.</div></div>' : ''}
+                    ${analyzerState.evBreakdownOpen ? renderEVBreakdown(breakdown, currentScore, remaining, handNumbers, hasSC) : ''}
                 </div>
 
                 <div class="analysis-block">
