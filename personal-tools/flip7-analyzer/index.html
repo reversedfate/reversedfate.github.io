@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flip 7 Analyzer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <header class="app-header">
+        <a class="back-link" href="../../">← TOOLS</a>
+        <div class="header-title">
+            <span class="title-seven">7</span>
+            <h1 class="app-title">FLIP 7 ANALYZER</h1>
+        </div>
+        <nav class="tab-nav" role="tablist">
+            <button class="tab-btn active" data-tab="simulator" role="tab" aria-selected="true" aria-controls="tab-simulator">SIMULATOR</button>
+            <button class="tab-btn" data-tab="analyzer" role="tab" aria-selected="false" aria-controls="tab-analyzer">OPTIMAL PLAY</button>
+            <button class="tab-btn" data-tab="tracker" role="tab" aria-selected="false" aria-controls="tab-tracker">CARD TRACKER</button>
+        </nav>
+    </header>
+
+    <main class="app-main">
+
+        <!-- ══ TAB 1: GAME SIMULATOR ══ -->
+        <section id="tab-simulator" class="tab-panel active" role="tabpanel">
+
+            <div id="sim-setup" class="setup-bar">
+                <div class="setup-row">
+                    <div class="setup-group">
+                        <span class="setup-label">PLAYERS</span>
+                        <div class="player-count-stepper">
+                            <button class="stepper-btn" id="count-dec">−</button>
+                            <span class="stepper-val" id="count-display">2</span>
+                            <button class="stepper-btn" id="count-inc">+</button>
+                        </div>
+                    </div>
+                    <div class="setup-group">
+                        <span class="setup-label">DECKS</span>
+                        <div class="player-count-stepper">
+                            <button class="stepper-btn" id="deck-dec">−</button>
+                            <span class="stepper-val" id="deck-count-display">1</span>
+                            <button class="stepper-btn" id="deck-inc">+</button>
+                        </div>
+                    </div>
+                    <div class="setup-group setup-group-ai">
+                        <span class="setup-label">AI LEVEL</span>
+                        <select id="sim-ai-level" class="setup-select">
+                            <option value="easy">EASY</option>
+                            <option value="medium" selected>MEDIUM</option>
+                            <option value="hard">HARD</option>
+                        </select>
+                        <span id="sim-ai-desc" class="ai-level-desc">Uses bust probability and expected value</span>
+                    </div>
+                    <div class="setup-actions">
+                        <button id="sim-start-btn" class="btn-deal">DEAL</button>
+                        <button id="sim-reset-btn" class="btn-ghost hidden">NEW GAME</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="sim-game" class="sim-game hidden">
+                <div class="pile-toolbar">
+                    <button id="sim-draw-btn" class="btn-pile">DRAW PILE · 0</button>
+                    <button id="sim-discard-btn" class="btn-pile">DISCARD · 0</button>
+                </div>
+
+                <div id="sim-ai-controls" class="ai-controls-bar hidden">
+                    <div class="ai-ctrl-left">
+                        <button id="sim-autoplay-btn" class="btn-ghost autoplay-btn autoplay-on">AUTOPLAY: ON</button>
+                        <button id="sim-anim-btn" class="btn-ghost autoplay-btn autoplay-on">ANIMATIONS: ON</button>
+                        <button id="sim-sound-btn" class="btn-ghost autoplay-btn autoplay-on">SOUNDS: ON</button>
+                        <div class="viz-speed-group" id="sim-speed-group">
+                            <span class="setup-label">SPEED</span>
+                            <div class="speed-btns">
+                                <button class="speed-btn" data-speed="instant">INSTANT</button>
+                                <button class="speed-btn" data-speed="fast">FAST</button>
+                                <button class="speed-btn active" data-speed="normal">NORMAL</button>
+                                <button class="speed-btn" data-speed="slow">SLOW</button>
+                            </div>
+                        </div>
+                    </div>
+                    <button id="sim-next-ai-btn" class="btn-ghost next-ai-btn hidden">▶ NEXT AI MOVE</button>
+                </div>
+
+                <div id="sim-human-controls" class="human-controls">
+                    <div class="controls-left">
+                        <div class="your-turn-label" id="controls-status-label">YOUR TURN</div>
+                        <div id="sim-bust-indicator" class="bust-indicator-bar"></div>
+                    </div>
+                    <div class="controls-right">
+                        <button id="sim-stay-btn" class="btn-stay">STAY</button>
+                        <button id="sim-hit-btn" class="btn-hit">HIT</button>
+                        <button id="sim-next-round-ctrl-btn" class="btn-next-round" disabled>NEXT ROUND</button>
+                    </div>
+                </div>
+
+                <div id="sim-turn-strip" class="turn-strip"></div>
+
+                <div class="sim-arena">
+                    <div id="sim-players" class="players-grid"></div>
+                    <aside class="log-aside">
+                        <div class="log-header">
+                            <span class="log-title">GAME LOG</span>
+                            <span id="log-round-badge" class="round-badge"></span>
+                        </div>
+                        <div id="sim-log-entries" class="log-entries"></div>
+                    </aside>
+                </div>
+            </div>
+
+            <!-- Pile View Modal -->
+            <div id="sim-pile-modal" class="overlay hidden">
+                <div class="overlay-card overlay-wide pile-overlay">
+                    <div class="pile-overlay-header">
+                        <div id="sim-pile-title" class="overlay-title" style="font-size:20px;text-align:left"></div>
+                        <button id="sim-pile-close" class="btn-ghost btn-sm">CLOSE</button>
+                    </div>
+                    <div id="sim-pile-body" class="pile-body"></div>
+                </div>
+            </div>
+
+            <!-- Action Card Modal -->
+            <div id="sim-action-modal" class="overlay hidden">
+                <div class="overlay-card">
+                    <div class="overlay-eyebrow">ACTION CARD</div>
+                    <div id="sim-modal-title" class="overlay-title"></div>
+                    <div id="sim-modal-body" class="overlay-body"></div>
+                    <div id="sim-modal-targets" class="target-list"></div>
+                </div>
+            </div>
+
+            <!-- Round End Overlay -->
+            <div id="sim-round-end" class="overlay hidden">
+                <div class="overlay-card overlay-wide">
+                    <div class="overlay-eyebrow-row">
+                        <div class="overlay-eyebrow">ROUND COMPLETE</div>
+                        <button id="sim-round-end-close" class="btn-overlay-close" aria-label="Close">✕</button>
+                    </div>
+                    <div id="sim-round-title" class="overlay-title"></div>
+                    <div id="sim-round-scores" class="score-table"></div>
+                    <button id="sim-next-round-btn" class="btn-deal">NEXT ROUND</button>
+                </div>
+            </div>
+
+            <!-- Game Over Overlay -->
+            <div id="sim-game-over" class="overlay hidden">
+                <div class="overlay-card overlay-wide">
+                    <div class="overlay-eyebrow">GAME OVER</div>
+                    <div id="sim-winner-text" class="overlay-winner"></div>
+                    <div id="sim-final-scores" class="score-table"></div>
+                    <button id="sim-play-again-btn" class="btn-deal">PLAY AGAIN</button>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- ══ TAB 2: OPTIMAL PLAY ANALYZER ══ -->
+        <section id="tab-analyzer" class="tab-panel hidden" role="tabpanel">
+            <div class="analyzer-layout">
+
+                <div class="ana-col-left">
+                    <!-- Deck evaluation controls -->
+                    <div class="ana-deck-controls">
+                        <div>
+                            <div class="setup-label" style="margin-bottom:6px">EVALUATE AGAINST</div>
+                            <div class="ana-deck-seg" id="ana-deck-seg">
+                                <button class="ana-deck-btn active" data-mode="full">Full deck</button>
+                                <button class="ana-deck-btn" data-mode="game">Current game</button>
+                                <button class="ana-deck-btn" data-mode="tracker">Card tracker</button>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="setup-label" style="margin-bottom:6px">OPTIONS</div>
+                            <label class="ana-toggle-row">
+                                <div class="ana-toggle" id="ana-show-counts-toggle"></div>
+                                <span class="ana-toggle-label">Show remaining count</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="panel">
+                        <div class="panel-eyebrow">BUILD YOUR HAND</div>
+                        <div class="hand-builder-section">
+                            <div class="hb-label">NUMBER CARDS <span class="hb-hint">click to add · click again to remove</span></div>
+                            <div id="ana-number-chips" class="chip-row"></div>
+                        </div>
+                        <div class="hand-builder-section">
+                            <div class="hb-label">MODIFIER CARDS</div>
+                            <div id="ana-modifier-chips" class="chip-row"></div>
+                        </div>
+                        <div class="hand-builder-section">
+                            <div class="hb-label">HELD ACTION CARDS</div>
+                            <div id="ana-action-chips" class="chip-row"></div>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="panel-eyebrow">CURRENT HAND</div>
+                        <div id="ana-hand-display" class="hand-display-row">
+                            <span class="empty-state">No cards selected</span>
+                        </div>
+                        <div id="ana-score-breakdown" class="score-breakdown"></div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="panel-eyebrow">DECK CONTEXT</div>
+                        <div class="context-grid">
+                            <div class="ctx-cell">
+                                <div class="ctx-num" id="ana-remaining-count">95</div>
+                                <div class="ctx-lbl">REMAINING</div>
+                            </div>
+                            <div class="ctx-cell">
+                                <div class="ctx-num" id="ana-remaining-numbers">79</div>
+                                <div class="ctx-lbl">NUMBERS</div>
+                            </div>
+                            <div class="ctx-cell">
+                                <div class="ctx-num" id="ana-seen-count">0</div>
+                                <div class="ctx-lbl">SEEN</div>
+                            </div>
+                        </div>
+                        <div class="ctx-note">Synced with Card Tracker tab</div>
+                        <button id="ana-reset-seen" class="btn-ghost btn-sm">RESET SEEN</button>
+                    </div>
+                </div>
+
+                <div class="ana-col-right">
+                    <div class="panel panel-analysis" id="ana-results-panel">
+                        <div class="panel-eyebrow">ANALYSIS</div>
+                        <div id="ana-results-body">
+                            <div class="empty-state">Select cards to see analysis</div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- ══ TAB 3: CARD TRACKER ══ -->
+        <section id="tab-tracker" class="tab-panel hidden" role="tabpanel">
+
+            <!-- Controls bar -->
+            <div class="trk-controls-bar">
+                <div class="trk-decks-group">
+                    <span class="setup-label">DECKS IN PLAY</span>
+                    <div class="player-count-stepper">
+                        <button class="stepper-btn" id="trk-deck-dec">−</button>
+                        <span class="stepper-val" id="trk-deck-display">1</span>
+                        <button class="stepper-btn" id="trk-deck-inc">+</button>
+                    </div>
+                </div>
+                <div class="trk-action-btns">
+                    <button id="trk-load-game-btn" class="btn-ghost btn-sm">Load current game deck</button>
+                    <button id="trk-import-game-btn" class="btn-ghost btn-sm">Import to game</button>
+                    <button id="trk-reset-btn" class="btn-ghost btn-sm">RESET</button>
+                </div>
+            </div>
+
+            <!-- Stats bar -->
+            <div id="trk-stats" class="tracker-stats"></div>
+
+            <!-- Number cards -->
+            <div class="panel">
+                <div class="panel-eyebrow">NUMBER CARDS</div>
+                <p class="trk-explanation">Drawn = cards seen / removed from play. Left = cards still in draw pile.</p>
+                <div id="trk-number-grid" class="trk-tile-grid"></div>
+            </div>
+
+            <!-- Modifiers + Actions -->
+            <div class="tracker-two-col">
+                <div class="panel">
+                    <div class="panel-eyebrow">MODIFIER CARDS</div>
+                    <div id="trk-modifier-grid" class="trk-tile-grid trk-tile-grid--small"></div>
+                </div>
+                <div class="panel">
+                    <div class="panel-eyebrow">ACTION CARDS</div>
+                    <div id="trk-action-grid" class="trk-tile-grid trk-tile-grid--small"></div>
+                </div>
+            </div>
+
+            <!-- Bust risk + Distribution -->
+            <div class="tracker-two-col">
+                <div class="panel">
+                    <div class="panel-eyebrow">BUST RISK CALCULATOR</div>
+                    <div id="trk-bust-panel">
+                        <div class="empty-state">Set hand in Optimal Play tab</div>
+                    </div>
+                </div>
+                <div class="panel">
+                    <div class="panel-eyebrow">DECK DISTRIBUTION</div>
+                    <div id="trk-chart"></div>
+                </div>
+            </div>
+
+        </section>
+
+    </main>
+
+    <script src="flip7.js"></script>
+</body>
+</html>
