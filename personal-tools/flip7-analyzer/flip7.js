@@ -2661,10 +2661,51 @@ function importTrackerDeckToGame() {
         alert('No active game. Start a game in the Simulator tab first.');
         return;
     }
-    if (!confirm('This will replace the current game\'s draw pile with the tracker\'s remaining cards. Continue?')) return;
+    if (!confirm('This will rebuild the draw pile and discard pile from tracker counts. Player hands are preserved. Continue?')) return;
 
-    const newDeck = shuffle(buildTrackerDeck());
-    gameState.deck = newDeck;
+    // Count cards in player hands by type key so we never evict them
+    const handCount = {}; // 'n7' | 'm+8' | 'aFreeze' -> count
+    for (const player of gameState.players) {
+        for (const card of player.hand) {
+            const key = card.type === 'number'   ? 'n' + card.value
+                      : card.type === 'modifier' ? 'm' + card.symbol
+                      :                            'a' + card.name;
+            handCount[key] = (handCount[key] ?? 0) + 1;
+        }
+    }
+
+    let fakeId = 200000;
+    const newDeck    = [];
+    const newDiscard = [];
+
+    function distribute(category, key, tmpl) {
+        const mapKey = category === 'numbers' ? 'n' + key
+                     : category === 'modifiers' ? 'm' + key : 'a' + key;
+        const total   = trkTotal(category, key);
+        const left    = trkLeft(category, key);
+        const inHand  = handCount[mapKey] ?? 0;
+        // Draw pile gets up to left[c] cards, capped by what hands allow
+        const deckCnt    = Math.max(0, Math.min(left, total - inHand));
+        const discardCnt = Math.max(0, total - deckCnt - inHand);
+        for (let i = 0; i < deckCnt;    i++) newDeck.push({    ...tmpl, id: fakeId++ });
+        for (let i = 0; i < discardCnt; i++) newDiscard.push({ ...tmpl, id: fakeId++ });
+    }
+
+    for (let v = 0; v <= 12; v++) {
+        const tmpl = FULL_DECK.find(c => c.type === 'number' && c.value === v);
+        distribute('numbers', v, tmpl);
+    }
+    for (const def of MODIFIER_DEFS) {
+        const tmpl = FULL_DECK.find(c => c.type === 'modifier' && c.symbol === def.symbol);
+        distribute('modifiers', def.symbol, tmpl);
+    }
+    for (const def of ACTION_DEFS) {
+        const tmpl = FULL_DECK.find(c => c.type === 'action' && c.name === def.name);
+        distribute('actions', def.name, tmpl);
+    }
+
+    gameState.deck            = shuffle(newDeck);
+    gameState.discardThisRound = newDiscard;
 
     renderSimulator();
 }
