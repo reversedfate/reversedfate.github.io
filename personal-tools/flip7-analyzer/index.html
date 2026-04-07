@@ -57,7 +57,7 @@
                         <span id="sim-ai-desc" class="ai-level-desc">Uses bust probability and expected value</span>
                     </div>
                     <div class="setup-actions">
-                        <button id="sim-start-btn" class="btn-deal">DEAL</button>
+                        <button id="sim-start-btn" class="btn-deal">NEW GAME</button>
                         <button id="sim-reset-btn" class="btn-ghost hidden">NEW GAME</button>
                     </div>
                 </div>
@@ -164,6 +164,13 @@
             <div class="analyzer-layout">
 
                 <div class="ana-col-left">
+                    <!-- Sync toggle -->
+                    <label class="ana-sync-toggle dimmed" id="ana-sync-label">
+                        <input type="checkbox" id="ana-sync-cb" checked>
+                        <span>Use current game hand</span>
+                        <span class="ana-sync-note">(no active game)</span>
+                    </label>
+
                     <!-- Deck evaluation controls -->
                     <div class="ana-deck-controls">
                         <div>
