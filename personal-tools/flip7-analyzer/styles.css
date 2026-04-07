@@ -1,14 +1,14 @@
 /* ══════════════════════════════════════════════════════════════
-   FLIP 7 ANALYZER — NOIR CASINO DATA TERMINAL
+   FLIP 7 ANALYZER — CARD GAME THEME
    Typefaces: Bebas Neue (headers) · IBM Plex Mono (data) · IBM Plex Sans (body)
    ══════════════════════════════════════════════════════════════ */
 
 :root {
-    /* Backgrounds */
-    --bg:           #08090c;
-    --surface:      #0f1015;
-    --surface-2:    #161820;
-    --surface-3:    #1e2028;
+    /* Backgrounds — warm dark charcoal */
+    --bg:           #0e0c09;
+    --surface:      #151209;
+    --surface-2:    #1c1810;
+    --surface-3:    #242018;
 
     /* Brand */
     --red:          #e63946;
@@ -17,30 +17,47 @@
 
     /* Semantic */
     --gold:         #ffd166;
-    --gold-dim:     rgba(255, 209, 102, 0.10);
+    --gold-dim:     rgba(255, 209, 102, 0.12);
     --teal:         #06d6a0;
     --teal-dim:     rgba(6, 214, 160, 0.10);
     --amber:        #ffb347;
-    --amber-dim:    rgba(255, 179, 71, 0.10);
+    --amber-dim:    rgba(255, 179, 71, 0.12);
+    --cyan:         #00f0ff;
+    --cyan-dim:     rgba(0, 240, 255, 0.12);
 
     /* Card type colors */
-    --clr-number:   #cad2ff;
-    --clr-number-bg: rgba(202, 210, 255, 0.07);
-    --clr-modifier: #06d6a0;
-    --clr-modifier-bg: rgba(6, 214, 160, 0.07);
-    --clr-action:   #e63946;
-    --clr-action-bg: rgba(230, 57, 70, 0.07);
-    --clr-seen:     #252830;
-    --clr-seen-text: #40444e;
+    --clr-number:     #d4dcff;
+    --clr-number-bg:  rgba(180, 192, 255, 0.08);
+    --clr-modifier:   #2de0b0;
+    --clr-modifier-bg: rgba(45, 224, 176, 0.09);
+    --clr-action:     #ff6b6b;
+    --clr-action-bg:  rgba(255, 107, 107, 0.09);
+    --clr-seen:       #201d16;
+    --clr-seen-text:  #44402e;
+
+    /* Per-value number card colors (matching real Flip 7 palette) */
+    --card-0:  #6b7280;   /* gray */
+    --card-1:  #eab308;   /* yellow */
+    --card-2:  #f97316;   /* orange */
+    --card-3:  #ef4444;   /* red */
+    --card-4:  #ec4899;   /* pink */
+    --card-5:  #a855f7;   /* violet */
+    --card-6:  #3b82f6;   /* blue */
+    --card-7:  #00f0ff;   /* bright cyan — the namesake! */
+    --card-8:  #10b981;   /* teal-green */
+    --card-9:  #84cc16;   /* lime */
+    --card-10: #a3e635;   /* yellow-green */
+    --card-11: #f59e0b;   /* amber */
+    --card-12: #dc2626;   /* deep red */
 
     /* Text */
-    --txt:          #edf2f4;
-    --txt-muted:    #6c7585;
-    --txt-dim:      #3a3e4a;
+    --txt:       #f0ebe0;
+    --txt-muted: #8a8070;
+    --txt-dim:   #3e3a2e;
 
-    /* Borders */
-    --border:       #1e2030;
-    --border-hi:    rgba(230, 57, 70, 0.35);
+    /* Borders — warm golden tint */
+    --border:    #2a2318;
+    --border-hi: rgba(255, 180, 50, 0.22);
 
     /* Fonts */
     --font-display: 'Bebas Neue', sans-serif;
@@ -48,12 +65,12 @@
     --font-sans:    'IBM Plex Sans', sans-serif;
 
     /* Sizing */
-    --header-h:     54px;
-    --radius:       4px;
-    --radius-lg:    8px;
-    --gap:          12px;
-    --gap-lg:       20px;
-    --gap-xl:       28px;
+    --header-h:  58px;
+    --radius:    5px;
+    --radius-lg: 10px;
+    --gap:    12px;
+    --gap-lg: 20px;
+    --gap-xl: 28px;
 }
 
 /* ── Accessibility: focus-visible ── */
@@ -81,15 +98,14 @@ html, body {
     overflow-x: hidden;
 }
 
-/* subtle grid texture */
+/* warm radial depth gradient */
 body::before {
     content: '';
     position: fixed;
     inset: 0;
-    background-image:
-        linear-gradient(rgba(230,57,70,0.015) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(230,57,70,0.015) 1px, transparent 1px);
-    background-size: 48px 48px;
+    background:
+        radial-gradient(ellipse 70% 50% at 50% 0%, rgba(255,160,40,0.04) 0%, transparent 60%),
+        radial-gradient(ellipse 40% 30% at 20% 80%, rgba(180,120,30,0.03) 0%, transparent 50%);
     pointer-events: none;
     z-index: 0;
 }
@@ -110,9 +126,9 @@ a:hover { color: var(--red); }
     align-items: center;
     gap: 24px;
     padding: 0 24px;
-    background: rgba(8, 9, 12, 0.95);
-    border-bottom: 1px solid var(--border);
-    backdrop-filter: blur(8px);
+    background: rgba(14, 12, 9, 0.96);
+    border-bottom: 1px solid rgba(255, 180, 50, 0.15);
+    backdrop-filter: blur(10px);
 }
 
 .back-link {
@@ -133,11 +149,11 @@ a:hover { color: var(--red); }
 
 .title-seven {
     font-family: var(--font-display);
-    font-size: 32px;
-    color: var(--red);
+    font-size: 38px;
+    color: var(--cyan);
     line-height: 1;
     letter-spacing: -0.02em;
-    text-shadow: 0 0 20px var(--red-glow);
+    text-shadow: 0 0 24px rgba(0,240,255,0.5), 0 0 8px rgba(0,240,255,0.3);
 }
 
 .app-title {
@@ -172,9 +188,10 @@ a:hover { color: var(--red); }
 .tab-btn:last-child { border-right: none; }
 .tab-btn:hover { color: var(--txt-muted); background: var(--surface); }
 .tab-btn.active {
-    background: var(--red);
-    color: #fff;
+    background: rgba(255, 160, 40, 0.18);
+    color: var(--amber);
     font-weight: 700;
+    border-bottom: 2px solid var(--amber);
 }
 
 /* ── Tab Panels ── */
@@ -189,7 +206,7 @@ a:hover { color: var(--red); }
 /* ── Panel ── */
 .panel {
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-hi);
     border-radius: var(--radius-lg);
     padding: var(--gap-lg);
     margin-bottom: var(--gap);
@@ -220,14 +237,15 @@ a:hover { color: var(--red); }
     font-family: var(--font-display);
     font-size: 18px;
     letter-spacing: 0.08em;
-    background: var(--red);
+    background: linear-gradient(135deg, #e63946 0%, #ff6030 100%);
     color: #fff;
     border: none;
     border-radius: var(--radius);
     padding: 8px 24px;
     transition: all .15s;
+    box-shadow: 0 2px 12px rgba(230,80,40,0.3);
 }
-.btn-deal:hover { background: #ff4757; transform: translateY(-1px); box-shadow: 0 4px 16px var(--red-dim); }
+.btn-deal:hover { filter: brightness(1.12); transform: translateY(-1px); box-shadow: 0 5px 20px rgba(230,80,40,0.45); }
 .btn-deal:active { transform: none; }
 
 .btn-ghost {
@@ -247,31 +265,31 @@ a:hover { color: var(--red); }
 
 .btn-hit {
     font-family: var(--font-display);
-    font-size: 28px;
+    font-size: 30px;
     letter-spacing: 0.1em;
-    background: var(--teal);
+    background: linear-gradient(135deg, #10b981 0%, #06d6a0 100%);
     color: #000;
     border: none;
     border-radius: var(--radius);
-    padding: 10px 36px;
+    padding: 11px 40px;
     transition: all .15s;
-    box-shadow: 0 0 0 transparent;
+    box-shadow: 0 2px 14px rgba(6,214,160,0.3);
 }
-.btn-hit:hover { filter: brightness(1.1); box-shadow: 0 4px 20px rgba(6,214,160,0.3); transform: translateY(-1px); }
+.btn-hit:hover { filter: brightness(1.1); box-shadow: 0 5px 24px rgba(6,214,160,0.45); transform: translateY(-2px); }
 .btn-hit:active { transform: none; }
 
 .btn-stay {
     font-family: var(--font-display);
-    font-size: 28px;
+    font-size: 30px;
     letter-spacing: 0.1em;
-    background: transparent;
+    background: rgba(255,179,71,0.12);
     color: var(--amber);
     border: 2px solid var(--amber);
     border-radius: var(--radius);
-    padding: 10px 36px;
+    padding: 11px 40px;
     transition: all .15s;
 }
-.btn-stay:hover { background: var(--amber-dim); }
+.btn-stay:hover { background: rgba(255,179,71,0.22); transform: translateY(-1px); }
 .btn-hit:disabled, .btn-stay:disabled {
     opacity: 0.35;
     cursor: not-allowed;
@@ -591,7 +609,7 @@ a:hover { color: var(--red); }
 /* ── Player Card ── */
 .player-card {
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-hi);
     border-radius: var(--radius-lg);
     padding: 14px;
     transition: border-color .2s;
@@ -606,13 +624,13 @@ a:hover { color: var(--red); }
     background: transparent;
     transition: background .2s;
 }
-.player-card.is-human::before { background: #4a9fff; }
-.player-card.is-active::before { background: var(--red); }
-.player-card.is-active { border-color: rgba(230,57,70,0.3); }
-/* AI thinking pulse */
+.player-card.is-human::before { background: #6aabff; }
+.player-card.is-active::before { background: var(--amber); }
+.player-card.is-active { border-color: rgba(255,179,71,0.38); }
+/* AI thinking pulse — amber */
 @keyframes thinking-pulse {
-    0%, 100% { border-color: rgba(230,57,70,0.3); box-shadow: none; }
-    50% { border-color: rgba(230,57,70,0.6); box-shadow: 0 0 12px rgba(230,57,70,0.2); }
+    0%, 100% { border-color: rgba(255,179,71,0.3); box-shadow: none; }
+    50% { border-color: rgba(255,179,71,0.65); box-shadow: 0 0 14px rgba(255,179,71,0.2); }
 }
 .player-card.is-active.is-ai { animation: thinking-pulse 1.1s ease-in-out infinite; }
 .player-card.is-busted { opacity: 0.45; }
@@ -642,7 +660,7 @@ a:hover { color: var(--red); }
     letter-spacing: 0.06em;
     color: var(--txt-muted);
 }
-.player-card.is-human .player-name { color: #4a9fff; }
+.player-card.is-human .player-name { color: #6aabff; }
 .player-card.is-active .player-name { color: var(--txt); }
 
 .player-score-row {
@@ -725,9 +743,9 @@ a:hover { color: var(--red); }
     flex-shrink: 0;
 }
 .flip-pip.pip-filled {
-    background: var(--clr-number);
-    border-color: var(--clr-number);
-    box-shadow: 0 0 4px rgba(202,210,255,0.35);
+    background: var(--amber);
+    border-color: var(--amber);
+    box-shadow: 0 0 4px rgba(255,179,71,0.4);
 }
 .flip-pips.pips-complete .flip-pip.pip-filled {
     background: var(--gold);
@@ -774,12 +792,12 @@ a:hover { color: var(--red); }
     padding: 2px 6px;
     border-radius: 2px;
 }
-.badge-active   { background: var(--red-dim);  color: var(--red); }
-.badge-stayed   { background: var(--teal-dim); color: var(--teal); }
-.badge-busted   { background: var(--red-dim);  color: var(--red); }
-.badge-frozen   { background: rgba(6,214,160,0.15); color: var(--clr-modifier); }
-.badge-thinking { background: rgba(230,57,70,0.1); color: var(--red); animation: thinking-pulse 1.1s ease-in-out infinite; }
-.badge-flip7   { background: rgba(255,209,102,0.15); color: var(--gold); }
+.badge-active   { background: var(--amber-dim); color: var(--amber); }
+.badge-stayed   { background: var(--teal-dim);  color: var(--teal); }
+.badge-busted   { background: var(--red-dim);   color: var(--red); }
+.badge-frozen   { background: rgba(45,224,176,0.15); color: var(--clr-modifier); }
+.badge-thinking { background: rgba(255,179,71,0.1); color: var(--amber); animation: thinking-pulse 1.1s ease-in-out infinite; }
+.badge-flip7    { background: rgba(255,209,102,0.15); color: var(--gold); }
 
 /* Hand row — playing card sized */
 .player-hand {
@@ -793,9 +811,9 @@ a:hover { color: var(--red); }
 
 /* ── Playing Card ── */
 .playing-card {
-    width: 36px;
-    height: 52px;
-    border-radius: 4px;
+    width: 42px;
+    height: 60px;
+    border-radius: 6px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -811,9 +829,28 @@ a:hover { color: var(--red); }
     flex-shrink: 0;
 }
 .playing-card.dealt { transform: translateY(0) rotate(0deg); opacity: 1; }
-.playing-card.number   { background: var(--clr-number-bg);   color: var(--clr-number);   border-color: rgba(202,210,255,0.2); }
-.playing-card.modifier { background: var(--clr-modifier-bg); color: var(--clr-modifier); border-color: rgba(6,214,160,0.2); }
-.playing-card.action   { background: var(--clr-action-bg);   color: var(--clr-action);   border-color: rgba(230,57,70,0.2); }
+
+/* Number cards: default (fallback for cards without data-value) */
+.playing-card.number { background: var(--clr-number-bg); color: #fff; border-color: rgba(180,192,255,0.2); }
+
+/* Per-value solid colors — cards 1, 9, 10, 11 have dark text on light bg */
+.playing-card.number[data-value="0"]  { background: var(--card-0);  color: #fff; border-color: rgba(255,255,255,0.15); }
+.playing-card.number[data-value="1"]  { background: var(--card-1);  color: #000; border-color: rgba(0,0,0,0.12); }
+.playing-card.number[data-value="2"]  { background: var(--card-2);  color: #fff; border-color: rgba(255,255,255,0.15); }
+.playing-card.number[data-value="3"]  { background: var(--card-3);  color: #fff; border-color: rgba(255,255,255,0.15); }
+.playing-card.number[data-value="4"]  { background: var(--card-4);  color: #fff; border-color: rgba(255,255,255,0.15); }
+.playing-card.number[data-value="5"]  { background: var(--card-5);  color: #fff; border-color: rgba(255,255,255,0.15); }
+.playing-card.number[data-value="6"]  { background: var(--card-6);  color: #fff; border-color: rgba(255,255,255,0.15); }
+.playing-card.number[data-value="7"]  { background: var(--card-7);  color: #000; border-color: rgba(0,240,255,0.45); box-shadow: 0 0 10px rgba(0,240,255,0.35); }
+.playing-card.number[data-value="8"]  { background: var(--card-8);  color: #fff; border-color: rgba(255,255,255,0.15); }
+.playing-card.number[data-value="9"]  { background: var(--card-9);  color: #000; border-color: rgba(0,0,0,0.12); }
+.playing-card.number[data-value="10"] { background: var(--card-10); color: #000; border-color: rgba(0,0,0,0.12); }
+.playing-card.number[data-value="11"] { background: var(--card-11); color: #000; border-color: rgba(0,0,0,0.12); }
+.playing-card.number[data-value="12"] { background: var(--card-12); color: #fff; border-color: rgba(255,255,255,0.15); }
+
+.playing-card.modifier { background: var(--clr-modifier-bg); color: var(--clr-modifier); border-color: rgba(45,224,176,0.25); }
+.playing-card.action   { background: var(--clr-action-bg);   color: var(--clr-action);   border-color: rgba(255,107,107,0.25); }
+
 .playing-card.face-down {
     background: var(--surface-3);
     color: var(--txt-dim);
@@ -821,15 +858,31 @@ a:hover { color: var(--red); }
     font-size: 18px;
 }
 .playing-card.bust-card {
-    background: rgba(230, 57, 70, 0.18);
-    color: var(--red);
-    border-color: rgba(230, 57, 70, 0.5);
-    box-shadow: 0 0 8px rgba(230, 57, 70, 0.25);
+    background: rgba(230, 57, 70, 0.22) !important;
+    color: var(--red) !important;
+    border-color: rgba(230, 57, 70, 0.55) !important;
+    box-shadow: 0 0 10px rgba(230, 57, 70, 0.28) !important;
 }
 .playing-card.received-card {
     opacity: 0.7;
     border-style: dashed;
 }
+
+/* Bottom-right corner — standard playing card convention (rotated 180°) */
+.playing-card::after {
+    content: attr(data-value);
+    position: absolute;
+    bottom: 3px;
+    right: 4px;
+    font-size: 8px;
+    line-height: 1;
+    opacity: 0.7;
+    transform: rotate(180deg);
+    transform-origin: center center;
+    font-family: var(--font-mono);
+    font-weight: 700;
+}
+.playing-card:not([data-value])::after { content: none; }
 
 .card-corner {
     position: absolute;
@@ -837,7 +890,7 @@ a:hover { color: var(--red); }
     left: 4px;
     font-size: 8px;
     line-height: 1;
-    opacity: 0.6;
+    opacity: 0.75;
 }
 .card-value-main {
     font-size: 13px;
@@ -1163,16 +1216,17 @@ a:hover { color: var(--red); }
 
 /* Scale the card up inside the reveal */
 .card-reveal-overlay .playing-card {
-    width: 100px;
-    height: 148px;
-    font-size: 40px;
-    border-width: 2px;
-    border-radius: 10px;
-    box-shadow: 0 12px 60px rgba(0,0,0,0.6);
+    width: 130px;
+    height: 185px;
+    font-size: 56px;
+    border-width: 3px;
+    border-radius: 12px;
+    box-shadow: 0 16px 80px rgba(0,0,0,0.7);
     position: relative;
 }
-.card-reveal-overlay .card-value-main { font-size: 40px; }
-.card-reveal-overlay .card-corner      { font-size: 13px; top: 8px; left: 8px; }
+.card-reveal-overlay .card-value-main { font-size: 56px; font-weight: 900; }
+.card-reveal-overlay .card-corner      { font-size: 16px; top: 10px; left: 10px; opacity: 0.85; }
+.card-reveal-overlay .playing-card::after { font-size: 16px; bottom: 10px; right: 10px; }
 
 .reveal-cross {
     position: absolute;
@@ -2021,4 +2075,43 @@ a:hover { color: var(--red); }
     border-radius: 5px;
     padding: 8px 10px;
     line-height: 1.5;
+}
+
+/* ── Reveal progress bar ── */
+.reveal-progress-bar {
+    width: 130px;
+    height: 3px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 6px;
+    position: relative;
+}
+.reveal-progress-bar::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--cyan);
+    border-radius: 2px;
+    transform-origin: left center;
+    transform: scaleX(1);
+    transition: none;
+}
+.reveal-progress-bar.draining::after {
+    transform: scaleX(0);
+    transition: transform var(--reveal-timeout, 2000ms) linear;
+}
+
+/* ── Card acquired flash ── */
+@keyframes card-acquired-flash {
+    0%   { box-shadow: 0 0 0 0   rgba(255,220,60,0);    transform: translateY(0) scale(1);    }
+    20%  { box-shadow: 0 0 0 4px rgba(255,220,60,0.85); transform: translateY(-3px) scale(1.08); }
+    40%  { box-shadow: 0 0 0 2px rgba(255,220,60,0.4);  transform: translateY(0) scale(1);    }
+    60%  { box-shadow: 0 0 0 3px rgba(255,220,60,0.65); transform: translateY(-2px) scale(1.05); }
+    80%  { box-shadow: 0 0 0 1px rgba(255,220,60,0.2);  transform: translateY(0) scale(1);    }
+    100% { box-shadow: 0 0 0 0   rgba(255,220,60,0);    transform: translateY(0) scale(1);    }
+}
+.card-just-acquired {
+    animation: card-acquired-flash 0.7s ease-out both;
+    transform: translateY(0) rotate(0deg) !important;
 }
