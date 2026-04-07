@@ -1,0 +1,210 @@
+<style>
+  body { background: #0d0d0d; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; }
+  h2 { color: #fff; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 4px; }
+  .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 20px; }
+
+  /* Analysis panel */
+  .analysis-panel { background: #111; border: 1px solid #222; border-radius: 10px; padding: 18px; max-width: 560px; }
+  .metric-row { display: flex; justify-content: space-between; align-items: baseline; padding: 10px 0; border-bottom: 1px solid #1a1a1a; }
+  .metric-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1.5px; color: #666; }
+  .metric-value { font-size: 1.1rem; font-weight: 700; }
+  .metric-value.good { color: #10b981; }
+  .metric-value.bad { color: #ef4444; }
+  .metric-value.neutral { color: #f59e0b; }
+
+  /* EV row with expand toggle */
+  .ev-row { padding: 10px 0; border-bottom: 1px solid #1a1a1a; }
+  .ev-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
+  .ev-header:hover .expand-btn { opacity: 1; }
+  .ev-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1.5px; color: #666; }
+  .ev-val-row { display: flex; align-items: baseline; gap: 10px; }
+  .ev-val { font-size: 1.1rem; font-weight: 700; color: #10b981; }
+  .expand-btn { font-size: 0.7rem; color: #555; border: 1px solid #333; border-radius: 4px; padding: 3px 8px; opacity: 0.7; cursor: pointer; background: #1a1a1a; white-space: nowrap; }
+
+  /* Expanded calculation */
+  .ev-breakdown { margin-top: 14px; border-top: 1px solid #1a1a1a; padding-top: 14px; font-size: 0.78rem; }
+  .breakdown-section { margin-bottom: 14px; }
+  .breakdown-title { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 1.5px; color: #555; margin-bottom: 8px; }
+  .breakdown-table { width: 100%; border-collapse: collapse; }
+  .breakdown-table th { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 1px; color: #444; text-align: left; padding: 3px 6px 5px; border-bottom: 1px solid #1a1a1a; }
+  .breakdown-table td { padding: 4px 6px; font-size: 0.75rem; color: #bbb; border-bottom: 1px solid #111; vertical-align: top; }
+  .breakdown-table tr:last-child td { border-bottom: none; }
+  .outcome-bust { color: #ef4444; }
+  .outcome-pos { color: #10b981; }
+  .outcome-neutral { color: #f59e0b; }
+  .outcome-special { color: #a78bfa; }
+  .formula-line { font-family: monospace; font-size: 0.72rem; color: #888; padding: 4px 0; }
+  .formula-highlight { color: #60a5fa; }
+  .formula-result { font-weight: 700; color: #10b981; }
+  .formula-block { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 6px; padding: 10px 12px; margin-top: 8px; }
+
+  /* Summary totals */
+  .sum-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; }
+  .sum-row.total { border-top: 1px solid #333; margin-top: 6px; padding-top: 10px; }
+  .sum-label { font-size: 0.72rem; color: #666; }
+  .sum-val { font-size: 0.82rem; font-weight: 600; }
+
+  .rec-block { margin-top: 14px; padding: 12px 16px; border-radius: 8px; background: #0a1f0a; border: 1px solid #10b98133; }
+  .rec-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 2px; color: #666; margin-bottom: 4px; }
+  .rec-val { font-size: 1.2rem; font-weight: 800; color: #10b981; letter-spacing: 2px; }
+  .rec-reason { font-size: 0.75rem; color: #666; margin-top: 4px; }
+</style>
+
+<h2>EV Calculation — Expanded Section Mockup</h2>
+<p class="subtitle">How the expected value breakdown looks when expanded. Example: hand has [3, 5, 8], modifier +4, no Second Chance. Current score = 20.</p>
+
+<div class="options">
+  <div class="option" data-choice="ev-inline" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Inline expand — accordion below EV line</h3>
+      <p>EV line has a "Show calculation ▾" toggle. Clicking expands the math directly in the analysis panel, no modal.</p>
+
+      <div class="analysis-panel" style="margin-top:14px">
+        <!-- Bust row -->
+        <div class="metric-row">
+          <span class="metric-label">Bust Probability</span>
+          <span class="metric-value bad">18.4%</span>
+        </div>
+
+        <!-- EV row with expand -->
+        <div class="ev-row">
+          <div class="ev-header">
+            <span class="ev-title">Expected Value (hit)</span>
+            <div class="ev-val-row">
+              <span class="ev-val">+4.7 pts</span>
+              <span class="expand-btn">Show calculation ▾</span>
+            </div>
+          </div>
+
+          <!-- Expanded breakdown (shown open for mockup) -->
+          <div class="ev-breakdown">
+            <div class="breakdown-section">
+              <div class="breakdown-title">Current hand</div>
+              <div class="formula-block">
+                <div class="formula-line">Numbers: <span class="formula-highlight">3 + 5 + 8 = 16</span></div>
+                <div class="formula-line">Modifiers: <span class="formula-highlight">+4</span></div>
+                <div class="formula-line">Total score: <span class="formula-result">20 pts</span></div>
+              </div>
+            </div>
+
+            <div class="breakdown-section">
+              <div class="breakdown-title">Deck context (67 cards remaining)</div>
+              <table class="breakdown-table">
+                <thead>
+                  <tr><th>Outcome type</th><th>Cards</th><th>Prob</th><th>Score Δ</th><th>Weighted</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="outcome-bust">Bust (duplicate)</td>
+                    <td>12 cards<br><small style="color:#555">3s×2, 5s×5, 8s×5</small></td>
+                    <td>17.9%</td>
+                    <td class="outcome-bust">−20 pts</td>
+                    <td class="outcome-bust">−3.58</td>
+                  </tr>
+                  <tr>
+                    <td class="outcome-pos">New number</td>
+                    <td>37 cards</td>
+                    <td>55.2%</td>
+                    <td class="outcome-pos">avg +5.1 pts</td>
+                    <td class="outcome-pos">+2.82</td>
+                  </tr>
+                  <tr>
+                    <td class="outcome-pos">Modifier card</td>
+                    <td>5 cards</td>
+                    <td>7.5%</td>
+                    <td class="outcome-pos">avg +5.6 pts</td>
+                    <td class="outcome-pos">+0.42</td>
+                  </tr>
+                  <tr>
+                    <td class="outcome-special">Flip Three ⟲</td>
+                    <td>3 cards</td>
+                    <td>4.5%</td>
+                    <td class="outcome-neutral">EV of 3 draws: +3.1</td>
+                    <td class="outcome-neutral">+0.14</td>
+                  </tr>
+                  <tr>
+                    <td class="outcome-special">Second Chance ✦</td>
+                    <td>3 cards</td>
+                    <td>4.5%</td>
+                    <td class="outcome-special">Bust shield gained</td>
+                    <td class="outcome-special">+5.2 (adjusted)</td>
+                  </tr>
+                  <tr>
+                    <td style="color:#555">Freeze</td>
+                    <td>7 cards</td>
+                    <td>10.4%</td>
+                    <td style="color:#555">0 pts (no effect)</td>
+                    <td style="color:#555">0</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="breakdown-section">
+              <div class="breakdown-title">Flip Three breakdown (recursive)</div>
+              <div class="formula-block" style="font-size:0.7rem; color:#888;">
+                <div class="formula-line">If Flip Three drawn → 3 forced draws from remaining 66 cards</div>
+                <div class="formula-line">Draw 1 EV: <span class="formula-highlight">+2.8</span> &nbsp;|&nbsp; Draw 2 EV: <span class="formula-highlight">+1.9</span> &nbsp;|&nbsp; Draw 3 EV: <span class="formula-highlight">+1.2</span></div>
+                <div class="formula-line">Combined: <span class="formula-highlight">bust prob 38.4%</span>, net EV: <span class="formula-result">+3.1 pts</span></div>
+              </div>
+            </div>
+
+            <div class="breakdown-section">
+              <div class="breakdown-title">Second Chance adjustment</div>
+              <div class="formula-block" style="font-size:0.7rem; color:#888;">
+                <div class="formula-line">SC shields next duplicate — recalculates EV with one bust negated</div>
+                <div class="formula-line">Without SC: bust EV contribution = <span style="color:#ef4444">−3.58</span></div>
+                <div class="formula-line">With SC active: first bust → no score loss, SC consumed</div>
+                <div class="formula-line">SC value ≈ <span class="formula-result">+5.2 pts</span> (probability-weighted bust protection)</div>
+              </div>
+            </div>
+
+            <div class="formula-block">
+              <div class="sum-row"><span class="sum-label">Bust outcomes</span><span class="sum-val outcome-bust">−3.58</span></div>
+              <div class="sum-row"><span class="sum-label">New number draws</span><span class="sum-val outcome-pos">+2.82</span></div>
+              <div class="sum-row"><span class="sum-label">Modifier draws</span><span class="sum-val outcome-pos">+0.42</span></div>
+              <div class="sum-row"><span class="sum-label">Flip Three (recursive)</span><span class="sum-val outcome-neutral">+0.14</span></div>
+              <div class="sum-row"><span class="sum-label">Second Chance value</span><span class="sum-val outcome-special">+0.23</span></div>
+              <div class="sum-row"><span class="sum-label">Freeze (no effect)</span><span class="sum-val" style="color:#444">+0.00</span></div>
+              <div class="sum-row total"><span class="sum-label" style="color:#ccc;font-weight:600">Total EV (hit)</span><span class="sum-val formula-result" style="font-size:1rem">+4.70 pts</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recommendation -->
+        <div class="rec-block">
+          <div class="rec-label">Recommendation</div>
+          <div class="rec-val">HIT</div>
+          <div class="rec-reason">EV of +4.7 pts outweighs 18.4% bust risk at current score</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="ev-modal" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Compact panel + "Full breakdown" button</h3>
+      <p>Analysis panel stays compact. A separate "Full breakdown →" button opens a wider detailed view or modal with the complete math. Keeps the main panel clean.</p>
+      <div style="margin-top:12px; background:#111; border:1px solid #222; border-radius:8px; padding:14px 18px; max-width:340px;">
+        <div class="metric-row" style="padding:8px 0">
+          <span class="metric-label">Bust Probability</span>
+          <span class="metric-value bad">18.4%</span>
+        </div>
+        <div class="metric-row" style="padding:8px 0; border-bottom:none">
+          <span class="metric-label">Expected Value</span>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span class="metric-value good">+4.7 pts</span>
+            <button style="font-size:0.68rem; color:#60a5fa; border:1px solid #2563eb44; background:#2563eb11; border-radius:4px; padding:3px 8px; cursor:pointer;">Full breakdown →</button>
+          </div>
+        </div>
+        <div class="rec-block" style="margin-top:10px; padding:10px 14px;">
+          <div class="rec-label">Recommendation</div>
+          <div class="rec-val">HIT</div>
+        </div>
+      </div>
+      <p style="margin-top:10px; font-size:0.78rem; color:#666">Full breakdown opens a detailed panel alongside, or as a scrollable section below the main panel</p>
+    </div>
+  </div>
+</div>
