@@ -2632,9 +2632,46 @@ if (typeof Chart !== 'undefined') {
     });
 }
 
-function runOneSim(remainingDeck) {
-    // Fisher-Yates shuffle of deck copy
-    const deck = [...remainingDeck];
+// Build a freshly shuffled reshuffle deck: numDecks * FULL_DECK minus current sim hand
+function buildSimReshuffle(nums, mods, hasSC) {
+    const pool = [];
+    for (let d = 0; d < trackerState.numDecks; d++) {
+        for (const c of FULL_DECK) pool.push(c);
+    }
+    for (const v of nums) {
+        const idx = pool.findIndex(c => c.type === 'number' && c.value === v);
+        if (idx !== -1) pool.splice(idx, 1);
+    }
+    for (const m of mods) {
+        const isX2 = m === 'x2';
+        const idx = isX2
+            ? pool.findIndex(c => c.type === 'modifier' && c.isX2)
+            : pool.findIndex(c => c.type === 'modifier' && !c.isX2 && c.value === m);
+        if (idx !== -1) pool.splice(idx, 1);
+    }
+    if (hasSC) {
+        const idx = pool.findIndex(c => c.type === 'action' && c.name === 'SecondChance');
+        if (idx !== -1) pool.splice(idx, 1);
+    }
+    for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    return pool;
+}
+
+function runOneSim(baseRemainingDeck) {
+    // Build starting deck — for 'full' mode with multiple decks, append extra copies
+    let deck;
+    if (analyzerState.deckMode === 'full' && trackerState.numDecks > 1) {
+        deck = [...baseRemainingDeck]; // first copy with hand already removed
+        for (let d = 1; d < trackerState.numDecks; d++) {
+            for (const c of FULL_DECK) deck.push(c);
+        }
+    } else {
+        deck = [...baseRemainingDeck];
+    }
+    // Fisher-Yates shuffle
     for (let i = deck.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [deck[i], deck[j]] = [deck[j], deck[i]];
@@ -2644,16 +2681,32 @@ function runOneSim(remainingDeck) {
     const mods   = [...analyzerState.handModifiers];
     let hasSC    = analyzerState.handActions.includes('SecondChance');
     const numSet = new Set(nums);
-    const milestones = {}; // level (1-7) -> score at that moment
+    const milestones = {};
+    let deckPos  = 0;
+    let reshuffles = 0;
+    const MAX_RESHUFFLES = 4;
 
-    for (let i = 0; i < deck.length; i++) {
+    for (;;) {
+        // Check flip 7 before drawing next card
         if (nums.length === FLIP7_COUNT) {
             const score = applyScoring(nums, mods, true);
             milestones[FLIP7_COUNT] = score;
             return { type: 'flip7', score, milestones };
         }
 
-        const card = deck[i];
+        // Deck exhausted — reshuffle to model real game behaviour
+        if (deckPos >= deck.length) {
+            if (reshuffles < MAX_RESHUFFLES) {
+                deck = buildSimReshuffle(nums, mods, hasSC);
+                deckPos = 0;
+                reshuffles++;
+                if (deck.length === 0) break;
+                continue;
+            }
+            break;
+        }
+
+        const card = deck[deckPos++];
 
         if (card.type === 'number') {
             if (numSet.has(card.value)) {
@@ -2679,11 +2732,11 @@ function runOneSim(remainingDeck) {
             } else if (card.name === 'SecondChance' && !hasSC) {
                 hasSC = true;
             }
-            // FlipThree: no distinct effect — player already committed to drawing all cards
+            // FlipThree: player already committed to drawing; no distinct effect
         }
     }
 
-    // Deck exhausted
+    // Safety exit (max reshuffles reached)
     const isFlip7 = nums.length === FLIP7_COUNT;
     const score = applyScoring(nums, mods, isFlip7);
     if (isFlip7) milestones[FLIP7_COUNT] = score;
@@ -2846,8 +2899,9 @@ function renderOutcomesResults() {
     if (rnEl) rnEl.textContent = remaining.filter(c => c.type === 'number').length;
     if (rsEl) rsEl.textContent = trkTotalDrawn();
     const deckLabel = { full: 'Full deck', game: 'Current game draw pile', tracker: 'Card tracker deck' }[analyzerState.deckMode] || 'Full deck';
+    const decksNote = analyzerState.deckMode === 'full' && trackerState.numDecks > 1 ? ` · ${trackerState.numDecks} decks` : '';
     const outNote = document.getElementById('out-ctx-note');
-    if (outNote) outNote.textContent = `Evaluating against: ${deckLabel}`;
+    if (outNote) outNote.textContent = `Evaluating against: ${deckLabel}${decksNote} (reshuffles on empty)`;
 
     if (n === 0) {
         const evEl = document.getElementById('out-ev-bar');
@@ -2930,7 +2984,34 @@ function computeOutcomesStats(n) {
         if (p75 === null && cumul / n >= 0.75) { p75 = score; break; }
     }
 
-    return { ev, median: median ?? 0, p25: p25 ?? 0, p75: p75 ?? 0, allScores, sorted };
+    // Conditional stats: outcomes where player actually scored (score > 0)
+    const scoringScores = new Map();
+    for (const [score, count] of allScores) {
+        if (+score > 0) scoringScores.set(+score, count);
+    }
+    const scoringTotal = [...scoringScores.values()].reduce((a,b) => a+b, 0);
+    let evScoring = 0, p25s = null, medianS = null, p75s = null;
+    if (scoringTotal > 0) {
+        for (const [score, count] of scoringScores) evScoring += score * count;
+        evScoring /= scoringTotal;
+        const sortedS = [...scoringScores.entries()].sort((a,b) => a[0] - b[0]);
+        let cumulS = 0;
+        for (const [score, count] of sortedS) {
+            cumulS += count;
+            if (p25s === null && cumulS / scoringTotal >= 0.25) p25s = score;
+            if (medianS === null && cumulS / scoringTotal >= 0.50) medianS = score;
+            if (p75s === null && cumulS / scoringTotal >= 0.75) { p75s = score; break; }
+        }
+    }
+
+    const bustRate = outcomesState.bustCount / n;
+    const scoringRate = scoringTotal / n;
+
+    return {
+        ev, median: median ?? 0, p25: p25 ?? 0, p75: p75 ?? 0, allScores, sorted,
+        evScoring, p25s: p25s ?? 0, medianS: medianS ?? 0, p75s: p75s ?? 0,
+        scoringTotal, scoringRate, bustRate,
+    };
 }
 
 function computeMilestoneStats(lvl) {
@@ -2975,17 +3056,30 @@ function renderOutcomesEV(n) {
             <span class="out-ev-unit">pts</span>
         </div>
         <div class="out-ev-secondary">
-            <div class="out-ev-stat">
-                <span class="out-ev-stat-val">${stats.median}</span>
-                <span class="out-ev-stat-lbl">MEDIAN</span>
+            <div class="out-ev-stat out-ev-bust">
+                <span class="out-ev-stat-val">${(stats.bustRate * 100).toFixed(1)}%</span>
+                <span class="out-ev-stat-lbl">BUST RATE</span>
             </div>
             <div class="out-ev-stat">
-                <span class="out-ev-stat-val">${stats.p25}</span>
-                <span class="out-ev-stat-lbl">P25</span>
+                <span class="out-ev-stat-val">${stats.scoringTotal > 0 ? stats.evScoring.toFixed(1) : '—'}</span>
+                <span class="out-ev-stat-lbl">AVG WHEN SCORING</span>
             </div>
-            <div class="out-ev-stat">
-                <span class="out-ev-stat-val">${stats.p75}</span>
-                <span class="out-ev-stat-lbl">P75</span>
+        </div>
+        <div class="out-ev-cond-row">
+            <span class="out-ev-cond-lbl">WHEN SCORING &gt; 0 (${(stats.scoringRate * 100).toFixed(1)}% of outcomes):</span>
+            <div class="out-ev-secondary out-ev-cond-stats">
+                <div class="out-ev-stat">
+                    <span class="out-ev-stat-val">${stats.p25s}</span>
+                    <span class="out-ev-stat-lbl">P25</span>
+                </div>
+                <div class="out-ev-stat">
+                    <span class="out-ev-stat-val">${stats.medianS}</span>
+                    <span class="out-ev-stat-lbl">MEDIAN</span>
+                </div>
+                <div class="out-ev-stat">
+                    <span class="out-ev-stat-val">${stats.p75s}</span>
+                    <span class="out-ev-stat-lbl">P75</span>
+                </div>
             </div>
         </div>
         ${analyzerState.handNumbers.length > 0 ? `
@@ -3430,6 +3524,19 @@ function initTracker() {
     document.getElementById('trk-deck-inc')?.addEventListener('click', () => {
         trackerState.numDecks++;
         document.getElementById('trk-deck-display').textContent = trackerState.numDecks;
+        renderTracker();
+        if (activeTab === 'analyzer') renderAnalyzer();
+    });
+
+    // Mark all drawn button
+    document.getElementById('trk-mark-all-drawn-btn')?.addEventListener('click', () => {
+        if (!confirm('Mark all cards as drawn? Use this to set up a starting state by adding back only the cards you want.')) return;
+        for (const k of Object.keys(trackerState.drawn.numbers))
+            trackerState.drawn.numbers[+k] = trkTotal('numbers', +k);
+        for (const k of Object.keys(trackerState.drawn.modifiers))
+            trackerState.drawn.modifiers[k] = trkTotal('modifiers', k);
+        for (const k of Object.keys(trackerState.drawn.actions))
+            trackerState.drawn.actions[k] = trkTotal('actions', k);
         renderTracker();
         if (activeTab === 'analyzer') renderAnalyzer();
     });

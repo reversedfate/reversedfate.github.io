@@ -2230,7 +2230,7 @@ a:hover { color: var(--red); }
 /* EV bar */
 .out-ev-bar {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 20px;
     padding: 12px 0 14px;
     border-bottom: 1px solid var(--border);
@@ -2265,6 +2265,23 @@ a:hover { color: var(--red); }
 .out-ev-stat { display: flex; flex-direction: column; align-items: flex-start; }
 .out-ev-stat-val { font-family: var(--font-mono); font-size: 14px; color: var(--txt-muted); font-weight: 600; }
 .out-ev-stat-lbl { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.1em; color: var(--txt-dim); }
+.out-ev-bust .out-ev-stat-val { color: var(--red); }
+.out-ev-cond-row {
+    width: 100%;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--border);
+}
+.out-ev-cond-lbl {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    color: var(--txt-dim);
+    display: block;
+    margin-bottom: 6px;
+}
+.out-ev-cond-stats { gap: 20px; }
+.out-ev-cond-stats .out-ev-stat-val { color: var(--clr-number); font-size: 16px; }
 .out-ev-beat {
     margin-left: auto;
     text-align: right;
