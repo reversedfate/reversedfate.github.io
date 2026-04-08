@@ -21,6 +21,7 @@
             <button class="tab-btn active" data-tab="simulator" role="tab" aria-selected="true" aria-controls="tab-simulator">SIMULATOR</button>
             <button class="tab-btn" data-tab="analyzer" role="tab" aria-selected="false" aria-controls="tab-analyzer">OPTIMAL PLAY</button>
             <button class="tab-btn" data-tab="tracker" role="tab" aria-selected="false" aria-controls="tab-tracker">CARD TRACKER</button>
+            <button class="tab-btn" data-tab="outcomes" role="tab" aria-selected="false" aria-controls="tab-outcomes">POSSIBLE OUTCOMES</button>
         </nav>
     </header>
 
@@ -231,6 +232,10 @@
                             </div>
                         </div>
                         <div class="ctx-note">Synced with Card Tracker tab</div>
+                        <div class="ana-pile-row" id="ana-pile-row">
+                            <button class="btn-pile" id="ana-draw-pile-btn">DRAW PILE · 0</button>
+                            <button class="btn-pile hidden" id="ana-discard-pile-btn">DISCARD · 0</button>
+                        </div>
                     </div>
                 </div>
 
@@ -304,8 +309,156 @@
 
         </section>
 
+        <!-- ══ TAB 4: POSSIBLE OUTCOMES ══ -->
+        <section id="tab-outcomes" class="tab-panel hidden" role="tabpanel">
+            <div class="outcomes-layout">
+
+                <div class="out-col-left">
+                    <label class="ana-sync-toggle dimmed" id="out-sync-label">
+                        <input type="checkbox" id="out-sync-cb" checked>
+                        <span>Use current game hand</span>
+                        <span class="ana-sync-note">(no active game)</span>
+                    </label>
+
+                    <div class="ana-deck-controls">
+                        <div>
+                            <div class="setup-label" style="margin-bottom:6px">EVALUATE AGAINST</div>
+                            <div class="ana-deck-seg" id="out-deck-seg">
+                                <button class="ana-deck-btn active" data-mode="full">Full deck</button>
+                                <button class="ana-deck-btn" data-mode="game">Current game</button>
+                                <button class="ana-deck-btn" data-mode="tracker">Card tracker</button>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="setup-label" style="margin-bottom:6px">OPTIONS</div>
+                            <label class="ana-toggle-row">
+                                <div class="ana-toggle" id="out-show-counts-toggle"></div>
+                                <span class="ana-toggle-label">Show remaining count</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="panel-eyebrow">BUILD YOUR HAND</div>
+                        <div class="hand-builder-section">
+                            <div class="hb-label">NUMBER CARDS <span class="hb-hint">click to add · click again to remove</span></div>
+                            <div id="out-number-chips" class="chip-row"></div>
+                        </div>
+                        <div class="hand-builder-section">
+                            <div class="hb-label">MODIFIER CARDS</div>
+                            <div id="out-modifier-chips" class="chip-row"></div>
+                        </div>
+                        <div class="hand-builder-section">
+                            <div class="hb-label">HELD ACTION CARDS</div>
+                            <div id="out-action-chips" class="chip-row"></div>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="panel-eyebrow">CURRENT HAND</div>
+                        <div id="out-hand-display" class="hand-display-row">
+                            <span class="empty-state">No cards selected</span>
+                        </div>
+                        <div id="out-score-breakdown" class="score-breakdown"></div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="panel-eyebrow">DECK CONTEXT</div>
+                        <div class="context-grid">
+                            <div class="ctx-cell">
+                                <div class="ctx-num" id="out-remaining-count">95</div>
+                                <div class="ctx-lbl">REMAINING</div>
+                            </div>
+                            <div class="ctx-cell">
+                                <div class="ctx-num" id="out-remaining-numbers">79</div>
+                                <div class="ctx-lbl">NUMBERS</div>
+                            </div>
+                            <div class="ctx-cell">
+                                <div class="ctx-num" id="out-seen-count">0</div>
+                                <div class="ctx-lbl">SEEN</div>
+                            </div>
+                        </div>
+                        <div class="ctx-note" id="out-ctx-note">Evaluating against: Full deck</div>
+                    </div>
+                </div>
+
+                <div class="out-col-right">
+                    <div class="out-sim-controls panel">
+                        <div class="out-sim-btns">
+                            <button id="out-start-btn" class="btn-deal">START</button>
+                            <button id="out-pause-btn" class="btn-ghost hidden">PAUSE</button>
+                            <button id="out-reset-btn" class="btn-ghost">RESET</button>
+                            <select id="out-target-sel" class="setup-select">
+                                <option value="10000">10K sims</option>
+                                <option value="100000" selected>100K sims</option>
+                                <option value="1000000">1M sims</option>
+                            </select>
+                        </div>
+                        <div class="out-progress-wrap">
+                            <div class="out-progress-bar"><div id="out-progress-fill" class="out-progress-fill" style="width:0%"></div></div>
+                            <span id="out-progress-label" class="out-progress-label">Ready · 0 simulations</span>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="panel-eyebrow">OUTCOME SUMMARY</div>
+                        <div id="out-ev-bar"></div>
+                        <div id="out-summary" class="out-summary-row"></div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="panel-eyebrow">FINAL SCORE DISTRIBUTION</div>
+                        <div class="out-hist-legend">
+                            <span class="out-leg flip7">■ FLIP 7</span>
+                            <span class="out-leg freeze">■ FROZEN</span>
+                            <span class="out-leg empty">■ DECK EMPTY</span>
+                            <span class="out-leg bust">■ BUST</span>
+                        </div>
+                        <div id="out-final-histogram" class="out-histogram"></div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="panel-eyebrow">SCORE PROBABILITY CURVE</div>
+                        <div class="out-milestone-note">Probability of achieving a final score at or above each value — drag the marker to explore thresholds</div>
+                        <div class="out-cdf-wrap"><canvas id="out-cdf-canvas"></canvas></div>
+                        <div id="out-cdf-info" class="out-cdf-info"></div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="out-panel-header-row">
+                            <span class="panel-eyebrow" style="margin:0">SCORE AT EACH STOP OPPORTUNITY</span>
+                            <label class="out-grouping-ctrl">
+                                <span>GROUP SCORES BY</span>
+                                <select id="out-grouping-sel" class="setup-select">
+                                    <option value="1" selected>Each value</option>
+                                    <option value="2">2s</option>
+                                    <option value="5">5s</option>
+                                    <option value="10">10s</option>
+                                </select>
+                            </label>
+                        </div>
+                        <div class="out-milestone-note" style="margin-top:8px">Score distribution at each number milestone — all charts share the same X axis scale</div>
+                        <div id="out-milestone-charts" class="out-milestone-charts"></div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="panel-eyebrow">STOP OPPORTUNITY ANALYSIS</div>
+                        <div class="out-milestone-note">Expected value and risk at each draw decision point</div>
+                        <div id="out-stop-opp-table"></div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="panel-eyebrow">OUTCOMES RANKED BY CHANCE</div>
+                        <div id="out-outcomes-table" class="out-outcomes-table"></div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
     </main>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <script src="flip7.js"></script>
 </body>
 </html>

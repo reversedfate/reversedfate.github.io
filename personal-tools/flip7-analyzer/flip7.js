@@ -124,6 +124,36 @@ const analyzerState = {
     syncGameHand:  true,     // auto-populate hand from current simulator game
 };
 
+const outcomesState = {
+    running:    false,
+    simCount:   0,
+    targetSims: 100000,
+    _timer:     null,
+    flip7Count:  0,
+    bustCount:   0,
+    freezeCount: 0,
+    emptyCount:  0,
+    scoresByType: {
+        flip7:  new Map(),
+        bust:   new Map(),
+        freeze: new Map(),
+        empty:  new Map(),
+    },
+    milestoneScores: Array.from({ length: 8 }, () => new Map()),
+    // bustAtDepth[k] = count of busts that occurred when player had exactly k numbers
+    bustAtDepth: new Array(8).fill(0),
+};
+
+function resetOutcomes() {
+    if (outcomesState._timer) clearTimeout(outcomesState._timer);
+    outcomesState.running    = false;
+    outcomesState.simCount   = 0;
+    outcomesState.flip7Count = outcomesState.bustCount = outcomesState.freezeCount = outcomesState.emptyCount = 0;
+    outcomesState.scoresByType = { flip7: new Map(), bust: new Map(), freeze: new Map(), empty: new Map() };
+    outcomesState.milestoneScores = Array.from({ length: 8 }, () => new Map());
+    outcomesState.bustAtDepth = new Array(8).fill(0);
+}
+
 // Count-based card tracker state (replaces seenCardIds Set)
 const trackerState = {
     numDecks: 1,
@@ -245,6 +275,40 @@ function getAnalyzerDeck() {
         default: // 'full'
             return [...FULL_DECK];
     }
+}
+
+// Returns `deck` with one copy of each hand card removed (graceful: skips if not present)
+function subtractHandFromDeck(deck) {
+    const result = [...deck];
+    for (const val of analyzerState.handNumbers) {
+        const idx = result.findIndex(c => c.type === 'number' && c.value === val);
+        if (idx !== -1) result.splice(idx, 1);
+    }
+    for (const mod of analyzerState.handModifiers) {
+        const isX2 = mod === 'x2';
+        const idx = isX2
+            ? result.findIndex(c => c.type === 'modifier' && c.isX2)
+            : result.findIndex(c => c.type === 'modifier' && !c.isX2 && c.value === mod);
+        if (idx !== -1) result.splice(idx, 1);
+    }
+    for (const name of analyzerState.handActions) {
+        const idx = result.findIndex(c => c.type === 'action' && c.name === name);
+        if (idx !== -1) result.splice(idx, 1);
+    }
+    return result;
+}
+
+// Returns the evaluation deck for the current analyzer state,
+// with hand cards subtracted — except when deckMode='game' + syncGameHand + active game,
+// where gameState.deck already excludes the drawn hand cards.
+function getAnalyzerRemaining() {
+    const base = getAnalyzerDeck();
+    if (analyzerState.deckMode === 'game'
+        && analyzerState.syncGameHand
+        && gameState.phase !== 'setup') {
+        return base; // hand cards already absent from live draw pile
+    }
+    return subtractHandFromDeck(base);
 }
 
 // Sync the analyzer hand from the human player's current simulator hand
@@ -408,6 +472,8 @@ function computeExpectedValue(handNumberValues, handModifierValues, remaining, h
 
     return { evHit, currentScore, breakdown, effectiveBustProb };
 }
+let _calcStateCount = 0;
+
 /**
  * Exact sequential 3-draw tree for FlipThree forced draws.
  * Groups cards by type+value identity for a ~47x speedup over brute-force.
@@ -431,6 +497,7 @@ function drawSequence(handNums, handMods, remaining, hasSC, drawsLeft) {
     }
 
     for (const { card, count, ids } of groups.values()) {
+        _calcStateCount++;
         const w = count / n;
         const remWithout = remaining.filter(c => c.id !== ids[0]);
 
@@ -1098,6 +1165,17 @@ function showTab(name) {
         if (analyzerState.syncGameHand) syncHandFromGame();
         buildAnalyzerChips();
         renderAnalyzer();
+    }
+    if (name === 'outcomes') {
+        if (analyzerState.syncGameHand) syncHandFromGame();
+        buildOutcomesChips();
+        // Sync control state to shared analyzerState
+        document.querySelectorAll('#out-deck-seg .ana-deck-btn').forEach(b =>
+            b.classList.toggle('active', b.dataset.mode === analyzerState.deckMode));
+        document.getElementById('out-show-counts-toggle')?.classList.toggle('on', analyzerState.showCounts);
+        const outCb = document.getElementById('out-sync-cb');
+        if (outCb) outCb.checked = analyzerState.syncGameHand;
+        renderOutcomesResults();
     }
     if (name === 'tracker')   renderTracker();
     if (name === 'simulator') renderSimulator();
@@ -2067,15 +2145,17 @@ function initAnalyzer() {
         if (!btn) return;
         analyzerState.deckMode = btn.dataset.mode;
         document.querySelectorAll('.ana-deck-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === analyzerState.deckMode));
-        buildAnalyzerChips();  // refresh badges for new deck
+        buildAllChips();  // refresh badges for new deck (both tabs)
         renderAnalyzer();
+        resetOutcomes();  // stale outcomes invalidated by deck change
     });
 
     // Show counts toggle
     document.getElementById('ana-show-counts-toggle')?.addEventListener('click', () => {
         analyzerState.showCounts = !analyzerState.showCounts;
         document.getElementById('ana-show-counts-toggle').classList.toggle('on', analyzerState.showCounts);
-        buildAnalyzerChips();  // add/remove badges
+        document.getElementById('out-show-counts-toggle')?.classList.toggle('on', analyzerState.showCounts);
+        buildAllChips();  // add/remove badges on both tabs
         renderAnalyzer();
     });
 
@@ -2090,13 +2170,54 @@ function initAnalyzer() {
     // Sync game hand toggle
     document.getElementById('ana-sync-cb')?.addEventListener('change', e => {
         analyzerState.syncGameHand = e.target.checked;
-        if (analyzerState.syncGameHand) { syncHandFromGame(); buildAnalyzerChips(); }
+        const outCb = document.getElementById('out-sync-cb');
+        if (outCb) outCb.checked = analyzerState.syncGameHand;
+        if (analyzerState.syncGameHand) { syncHandFromGame(); buildAllChips(); }
+        else buildOutcomesChips();
         renderAnalyzer();
+        resetOutcomes();  // hand changed, outcomes invalidated
     });
 }
 
-function buildAnalyzerChips() {
-    const remaining = getAnalyzerDeck();
+function showAnaPileModal(title, cards) {
+    const modal = document.getElementById('sim-pile-modal');
+    const titleEl = document.getElementById('sim-pile-title');
+    const bodyEl  = document.getElementById('sim-pile-body');
+    const closeBtn = document.getElementById('sim-pile-close');
+    if (!modal || !titleEl || !bodyEl) return;
+
+    titleEl.textContent = `${title} — ${cards.length} card${cards.length !== 1 ? 's' : ''}`;
+
+    // Group and count by type+value for a compact display
+    const groups = new Map();
+    for (const c of cards) {
+        const key = c.type === 'number'   ? `n${c.value}`
+                  : c.type === 'modifier' ? `m${c.symbol}`
+                  : `a${c.name}`;
+        const label = c.type === 'number'   ? String(c.value)
+                    : c.type === 'modifier' ? c.symbol
+                    : c.symbol || c.name;
+        const cls = c.type;
+        if (!groups.has(key)) groups.set(key, { label, cls, count: 0 });
+        groups.get(key).count++;
+    }
+
+    bodyEl.innerHTML = [...groups.values()]
+        .sort((a, b) => (a.cls === 'number' ? 0 : a.cls === 'modifier' ? 1 : 2) - (b.cls === 'number' ? 0 : b.cls === 'modifier' ? 1 : 2))
+        .map(g => `<div class="pile-card-item">
+            <div class="playing-card ${g.cls} dealt" style="transform:none">
+                <span class="card-value-main">${g.label}</span>
+            </div>
+            <span class="pile-card-count">${g.count > 1 ? '×' + g.count : ''}</span>
+        </div>`).join('');
+
+    modal.classList.remove('hidden');
+    closeBtn.onclick = () => modal.classList.add('hidden');
+    modal.onclick = e => { if (e.target === modal) modal.classList.add('hidden'); };
+}
+
+function buildAnalyzerChips(prefix = 'ana') {
+    const remaining = getAnalyzerRemaining();
     const showCounts = analyzerState.showCounts;
 
     function countRemaining(type, matchFn) {
@@ -2109,7 +2230,7 @@ function buildAnalyzerChips() {
         return `<span class="ana-count-badge${count === 0 ? ' exhausted' : ''}">${count}</span>`;
     }
 
-    const numEl = document.getElementById('ana-number-chips');
+    const numEl = document.getElementById(`${prefix}-number-chips`);
     if (numEl) {
         numEl.innerHTML = Array.from({ length: 13 }, (_, v) => {
             const cnt = countRemaining('number', c => c.value === v);
@@ -2120,7 +2241,7 @@ function buildAnalyzerChips() {
         numEl.querySelectorAll('.sel-chip').forEach(c => c.addEventListener('click', () => onNumberChip(c)));
     }
 
-    const modEl = document.getElementById('ana-modifier-chips');
+    const modEl = document.getElementById(`${prefix}-modifier-chips`);
     if (modEl) {
         modEl.innerHTML = MODIFIER_DEFS.map(d => {
             const cnt = countRemaining('modifier', c => c.symbol === d.symbol);
@@ -2133,7 +2254,7 @@ function buildAnalyzerChips() {
         modEl.querySelectorAll('.sel-chip').forEach(c => c.addEventListener('click', () => onModifierChip(c)));
     }
 
-    const actEl = document.getElementById('ana-action-chips');
+    const actEl = document.getElementById(`${prefix}-action-chips`);
     if (actEl) {
         actEl.innerHTML = ACTION_DEFS.map(d => {
             const cnt = countRemaining('action', c => c.name === d.name);
@@ -2144,6 +2265,9 @@ function buildAnalyzerChips() {
         actEl.querySelectorAll('.sel-chip').forEach(c => c.addEventListener('click', () => onActionChip(c)));
     }
 }
+
+function buildOutcomesChips() { buildAnalyzerChips('out'); }
+function buildAllChips() { buildAnalyzerChips('ana'); buildOutcomesChips(); }
 
 function onNumberChip(chip) {
     const v = parseInt(chip.dataset.value);
@@ -2181,13 +2305,15 @@ function onActionChip(chip) {
         analyzerState.handActions.push(name);
         chip.classList.add('selected');
     }
-    renderAnalyzer();
+    recomputeAndRender();
 }
 
 function recomputeAndRender() {
-    buildAnalyzerChips();  // rebuild chips (updates badges + selection state)
+    buildAllChips();
     renderAnalyzer();
     if (activeTab === 'tracker') renderBustPanel();
+    if (activeTab === 'outcomes') resetAndStartOutcomes();
+    else resetOutcomes();
 }
 
 function renderEVBreakdown(breakdown, currentScore, remaining, handNums, hasSC) {
@@ -2330,10 +2456,12 @@ function renderEVBreakdown(breakdown, currentScore, remaining, handNums, hasSC) 
 
 function renderAnalyzer() {
     const { handNumbers, handModifiers, handActions } = analyzerState;
-    const remaining = getAnalyzerDeck();
+    const remaining = getAnalyzerRemaining();
     const rawBustProb = computeBustProbability(handNumbers, remaining);
     const hasSC = analyzerState.handActions.includes('SecondChance');
+    _calcStateCount = 0;
     const { evHit, currentScore, breakdown, effectiveBustProb } = computeExpectedValue(handNumbers, handModifiers, remaining, hasSC);
+    const calcCount = _calcStateCount;
     const bp = effectiveBustProb;  // use effective (SC-adjusted) bust prob for display
     const rec = getRecommendation(rawBustProb, effectiveBustProb, evHit, handNumbers.length, hasSC);
 
@@ -2427,6 +2555,9 @@ function renderAnalyzer() {
                         <div class="rec-action">${rec.action}</div>
                         <div class="rec-reason">${rec.reasoning}</div>
                     </div>
+                </div>
+                <div class="analysis-block" style="padding-top:4px;border-top:1px solid var(--border)">
+                    <span style="font-size:11px;color:var(--txt-dim)">${calcCount.toLocaleString()} states evaluated</span>
                 </div>`;
         }
     }
@@ -2438,8 +2569,839 @@ function renderAnalyzer() {
     document.getElementById('ana-seen-count').textContent = trkTotalDrawn();
     const noteEl = document.querySelector('.ctx-note');
     if (noteEl) noteEl.textContent = `Evaluating against: ${deckLabel}`;
+
+    // Pile preview buttons
+    const drawBtn = document.getElementById('ana-draw-pile-btn');
+    const discardBtn = document.getElementById('ana-discard-pile-btn');
+    if (drawBtn) {
+        drawBtn.textContent = `DRAW PILE · ${remaining.length}`;
+        drawBtn.onclick = () => showAnaPileModal('Draw pile', remaining);
+    }
+    // Show discard only in game mode when a game is active
+    const showDiscard = analyzerState.deckMode === 'game' && gameState.phase !== 'setup';
+    if (discardBtn) {
+        discardBtn.classList.toggle('hidden', !showDiscard);
+        if (showDiscard) {
+            const humanHand = gameState.players.flatMap(p => [...p.numberCards, ...p.modifierCards, ...p.actionCards]);
+            const discardVisible = gameState.discardThisRound.filter(c =>
+                !humanHand.some(h => h.id === c.id) && !gameState.deck.some(d => d.id === c.id));
+            discardBtn.textContent = `DISCARD · ${discardVisible.length}`;
+            discardBtn.onclick = () => showAnaPileModal('Discard pile', discardVisible);
+        }
+    }
 }
 
+
+/* ══════════════════════════════════════════════════════════════════
+   §8b  OUTCOMES ENGINE  (Monte Carlo)
+   ══════════════════════════════════════════════════════════════════ */
+
+let outcomesMilestoneGrouping = 1; // bin size for milestone charts (1 = exact)
+
+// Register a Chart.js plugin that draws a vertical score-marker line
+// Used on the final histogram and CDF chart to show current hand score
+if (typeof Chart !== 'undefined') {
+    Chart.register({
+        id: 'scoreMarker',
+        afterDatasetsDraw(chart) {
+            const opts = chart.options.plugins?.scoreMarker;
+            if (!opts) return;
+            const score = opts.score;
+            if (score == null) return;
+            const { ctx, scales } = chart;
+            if (!scales.x) return;
+            const xPx = scales.x.getPixelForValue(score);
+            if (xPx == null || isNaN(xPx)) return;
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(xPx, scales.y.top);
+            ctx.lineTo(xPx, scales.y.bottom);
+            ctx.strokeStyle = opts.color || '#d42b38';
+            ctx.lineWidth = opts.lineWidth || 2;
+            ctx.setLineDash([4, 3]);
+            ctx.stroke();
+            // Label above the line
+            if (opts.label) {
+                ctx.fillStyle = opts.color || '#d42b38';
+                ctx.font = '9px IBM Plex Mono';
+                ctx.textAlign = 'center';
+                ctx.fillText(opts.label, xPx, scales.y.top - 4);
+            }
+            ctx.restore();
+        }
+    });
+}
+
+function runOneSim(remainingDeck) {
+    // Fisher-Yates shuffle of deck copy
+    const deck = [...remainingDeck];
+    for (let i = deck.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+
+    const nums   = [...analyzerState.handNumbers];
+    const mods   = [...analyzerState.handModifiers];
+    let hasSC    = analyzerState.handActions.includes('SecondChance');
+    const numSet = new Set(nums);
+    const milestones = {}; // level (1-7) -> score at that moment
+
+    for (let i = 0; i < deck.length; i++) {
+        if (nums.length === FLIP7_COUNT) {
+            const score = applyScoring(nums, mods, true);
+            milestones[FLIP7_COUNT] = score;
+            return { type: 'flip7', score, milestones };
+        }
+
+        const card = deck[i];
+
+        if (card.type === 'number') {
+            if (numSet.has(card.value)) {
+                if (hasSC) {
+                    hasSC = false;
+                } else {
+                    return { type: 'bust', score: 0, depth: nums.length, milestones };
+                }
+            } else {
+                nums.push(card.value);
+                numSet.add(card.value);
+                const isFlip7 = nums.length === FLIP7_COUNT;
+                const score = applyScoring(nums, mods, isFlip7);
+                milestones[nums.length] = score;
+                if (isFlip7) return { type: 'flip7', score, milestones };
+            }
+        } else if (card.type === 'modifier') {
+            mods.push(card.isX2 ? 'x2' : card.value);
+        } else if (card.type === 'action') {
+            if (card.name === 'Freeze') {
+                const score = applyScoring(nums, mods, false);
+                return { type: 'freeze', score, milestones };
+            } else if (card.name === 'SecondChance' && !hasSC) {
+                hasSC = true;
+            }
+            // FlipThree: no distinct effect — player already committed to drawing all cards
+        }
+    }
+
+    // Deck exhausted
+    const isFlip7 = nums.length === FLIP7_COUNT;
+    const score = applyScoring(nums, mods, isFlip7);
+    if (isFlip7) milestones[FLIP7_COUNT] = score;
+    return { type: isFlip7 ? 'flip7' : 'empty', score, milestones };
+}
+
+const OUTCOMES_BATCH_MS = 12;
+
+function runOutcomesBatch() {
+    if (!outcomesState.running) return;
+    const deadline  = performance.now() + OUTCOMES_BATCH_MS;
+    const remaining = getAnalyzerRemaining();
+
+    while (performance.now() < deadline && outcomesState.simCount < outcomesState.targetSims) {
+        const r = runOneSim(remaining);
+        outcomesState[r.type + 'Count']++;
+        outcomesState.simCount++;
+        const sm = outcomesState.scoresByType[r.type];
+        sm.set(r.score, (sm.get(r.score) || 0) + 1);
+        if (r.type === 'bust' && r.depth != null) outcomesState.bustAtDepth[r.depth]++;
+        for (const [lvl, sc] of Object.entries(r.milestones)) {
+            const lm = outcomesState.milestoneScores[+lvl];
+            lm.set(sc, (lm.get(sc) || 0) + 1);
+        }
+    }
+
+    renderOutcomesResults();
+
+    if (outcomesState.running && outcomesState.simCount < outcomesState.targetSims) {
+        outcomesState._timer = setTimeout(runOutcomesBatch, 0);
+    } else {
+        outcomesState.running = false;
+        renderOutcomesResults();
+    }
+}
+
+function startOutcomes() {
+    if (outcomesState.running) return;
+    outcomesState.targetSims = parseInt(document.getElementById('out-target-sel')?.value || '100000');
+    outcomesState.running = true;
+    document.getElementById('out-start-btn')?.classList.add('hidden');
+    document.getElementById('out-pause-btn')?.classList.remove('hidden');
+    runOutcomesBatch();
+}
+
+function pauseOutcomes() {
+    outcomesState.running = false;
+    if (outcomesState._timer) clearTimeout(outcomesState._timer);
+    const startBtn = document.getElementById('out-start-btn');
+    if (startBtn) { startBtn.classList.remove('hidden'); startBtn.textContent = 'RESUME'; }
+    document.getElementById('out-pause-btn')?.classList.add('hidden');
+    renderOutcomesResults();
+}
+
+function resetAndStartOutcomes() {
+    resetOutcomes();
+    renderOutcomesResults();
+    startOutcomes();
+}
+
+function initOutcomes() {
+    document.getElementById('out-start-btn')?.addEventListener('click', startOutcomes);
+    document.getElementById('out-pause-btn')?.addEventListener('click', pauseOutcomes);
+    document.getElementById('out-reset-btn')?.addEventListener('click', () => {
+        resetOutcomes();
+        const startBtn = document.getElementById('out-start-btn');
+        if (startBtn) { startBtn.textContent = 'START'; startBtn.classList.remove('hidden'); }
+        document.getElementById('out-pause-btn')?.classList.add('hidden');
+        renderOutcomesResults();
+    });
+
+    document.getElementById('out-deck-seg')?.addEventListener('click', e => {
+        const btn = e.target.closest('.ana-deck-btn');
+        if (!btn) return;
+        analyzerState.deckMode = btn.dataset.mode;
+        document.querySelectorAll('#out-deck-seg .ana-deck-btn, #ana-deck-seg .ana-deck-btn').forEach(b =>
+            b.classList.toggle('active', b.dataset.mode === analyzerState.deckMode));
+        buildAllChips();
+        renderAnalyzer();
+        if (activeTab === 'outcomes') resetAndStartOutcomes();
+        else resetOutcomes();
+    });
+
+    document.getElementById('out-show-counts-toggle')?.addEventListener('click', () => {
+        analyzerState.showCounts = !analyzerState.showCounts;
+        document.getElementById('out-show-counts-toggle')?.classList.toggle('on', analyzerState.showCounts);
+        document.getElementById('ana-show-counts-toggle')?.classList.toggle('on', analyzerState.showCounts);
+        buildAllChips();
+        renderAnalyzer();
+    });
+
+    document.getElementById('out-sync-cb')?.addEventListener('change', e => {
+        analyzerState.syncGameHand = e.target.checked;
+        const anaCb = document.getElementById('ana-sync-cb');
+        if (anaCb) anaCb.checked = analyzerState.syncGameHand;
+        if (analyzerState.syncGameHand) { syncHandFromGame(); buildAllChips(); }
+        renderAnalyzer();
+        if (activeTab === 'outcomes') resetAndStartOutcomes();
+        else resetOutcomes();
+    });
+
+    // Grouping selector — rebuild charts with new bin size without re-running sim
+    document.getElementById('out-grouping-sel')?.addEventListener('change', e => {
+        outcomesMilestoneGrouping = parseInt(e.target.value) || 1;
+        // Destroy existing charts so they are recreated with new grouping
+        destroyMilestoneCharts();
+        document.getElementById('out-milestone-charts').innerHTML = '';
+        _lastMilestoneRender = 0;
+        if (outcomesState.simCount > 0) renderOutcomesMilestones(outcomesState.simCount);
+    });
+}
+
+/* ─── Outcomes Rendering ─── */
+
+function renderOutcomesResults() {
+    const n      = outcomesState.simCount;
+    const target = outcomesState.targetSims;
+    const pct    = target > 0 ? Math.min(100, (n / target) * 100) : 0;
+
+    const fillEl = document.getElementById('out-progress-fill');
+    if (fillEl) fillEl.style.width = pct + '%';
+    const lblEl = document.getElementById('out-progress-label');
+    if (lblEl) {
+        const status = outcomesState.running ? 'Running' : (n >= target && target > 0 ? 'Complete' : (n > 0 ? 'Paused' : 'Ready'));
+        lblEl.textContent = `${status} · ${n.toLocaleString()} / ${target.toLocaleString()} simulations`;
+    }
+
+    // Left column sync
+    const remaining = getAnalyzerRemaining();
+    const { handNumbers: hn, handModifiers: hm, handActions: ha } = analyzerState;
+    const handEl = document.getElementById('out-hand-display');
+    if (handEl) {
+        if (!hn.length && !hm.length && !ha.length) {
+            handEl.innerHTML = '<span class="empty-state">No cards selected</span>';
+        } else {
+            handEl.innerHTML = [
+                ...hn.map(v => `<div class="playing-card number dealt"><span class="card-corner">${v}</span><span class="card-value-main">${v}</span></div>`),
+                ...hm.map(m => `<div class="playing-card modifier dealt"><span class="card-value-main">${m === 'x2' ? 'x2' : '+'+m}</span></div>`),
+                ...ha.map(nm => { const d = ACTION_DEFS.find(x => x.name === nm); return `<div class="playing-card action dealt"><span class="card-value-main">${d?.symbol || nm}</span></div>`; }),
+            ].join('');
+        }
+    }
+    const sbEl = document.getElementById('out-score-breakdown');
+    if (sbEl) {
+        if (hn.length || hm.length) {
+            const numSum = hn.reduce((a,b) => a+b, 0);
+            const flat   = hm.filter(m => m !== 'x2').reduce((a,b) => a+b, 0);
+            const hasX2  = hm.includes('x2');
+            let formula  = `${numSum}`;
+            if (flat > 0) formula += ` + ${flat}`;
+            if (hasX2) formula = `(${formula}) × 2`;
+            const score = applyScoring(hn, hm, hn.length === FLIP7_COUNT);
+            sbEl.innerHTML = `<span style="color:var(--txt-dim);font-size:11px">${formula}</span><span class="score-big">${score}</span>`;
+        } else { sbEl.innerHTML = ''; }
+    }
+    const rcEl = document.getElementById('out-remaining-count');
+    const rnEl = document.getElementById('out-remaining-numbers');
+    const rsEl = document.getElementById('out-seen-count');
+    if (rcEl) rcEl.textContent = remaining.length;
+    if (rnEl) rnEl.textContent = remaining.filter(c => c.type === 'number').length;
+    if (rsEl) rsEl.textContent = trkTotalDrawn();
+    const deckLabel = { full: 'Full deck', game: 'Current game draw pile', tracker: 'Card tracker deck' }[analyzerState.deckMode] || 'Full deck';
+    const outNote = document.getElementById('out-ctx-note');
+    if (outNote) outNote.textContent = `Evaluating against: ${deckLabel}`;
+
+    if (n === 0) {
+        const evEl = document.getElementById('out-ev-bar');
+        if (evEl) evEl.innerHTML = '';
+        const summaryEl = document.getElementById('out-summary');
+        if (summaryEl) summaryEl.innerHTML = '<div class="empty-state" style="padding:20px 0;grid-column:1/-1">Start simulation to see results</div>';
+        destroyMilestoneCharts();
+        destroyCDFChart();
+        ['out-final-histogram', 'out-milestone-charts', 'out-outcomes-table', 'out-stop-opp-table'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = '';
+        });
+        const cdfInfo = document.getElementById('out-cdf-info');
+        if (cdfInfo) cdfInfo.textContent = '';
+        return;
+    }
+
+    renderOutcomesEV(n);
+    renderOutcomesSummary(n);
+    renderOutcomesHistogram(n);
+    renderOutcomesCDF(n);
+    renderOutcomesMilestones(n);
+    renderStopOpportunityTable(n);
+    renderOutcomesTable(n);
+}
+
+function renderOutcomesSummary(n) {
+    const o = outcomesState;
+    const pct = v => (v / n * 100).toFixed(1);
+    const summaryEl = document.getElementById('out-summary');
+    if (!summaryEl) return;
+    summaryEl.innerHTML = `
+        <div class="out-metric flip7">
+            <div class="out-metric-pct">${pct(o.flip7Count)}%</div>
+            <div class="out-metric-lbl">FLIP 7</div>
+            <div class="out-metric-n">${o.flip7Count.toLocaleString()}</div>
+        </div>
+        <div class="out-metric bust">
+            <div class="out-metric-pct">${pct(o.bustCount)}%</div>
+            <div class="out-metric-lbl">BUST</div>
+            <div class="out-metric-n">${o.bustCount.toLocaleString()}</div>
+        </div>
+        <div class="out-metric freeze">
+            <div class="out-metric-pct">${pct(o.freezeCount)}%</div>
+            <div class="out-metric-lbl">FROZEN</div>
+            <div class="out-metric-n">${o.freezeCount.toLocaleString()}</div>
+        </div>
+        <div class="out-metric empty">
+            <div class="out-metric-pct">${pct(o.emptyCount)}%</div>
+            <div class="out-metric-lbl">DECK EMPTY</div>
+            <div class="out-metric-n">${o.emptyCount.toLocaleString()}</div>
+        </div>`;
+}
+
+/* ── Stats helpers ── */
+
+function computeOutcomesStats(n) {
+    // Merge all scores across types
+    const allScores = new Map();
+    for (const map of Object.values(outcomesState.scoresByType)) {
+        for (const [score, count] of map) {
+            allScores.set(+score, (allScores.get(+score) || 0) + count);
+        }
+    }
+    if (allScores.size === 0) return null;
+
+    // EV (expected value)
+    let ev = 0;
+    for (const [score, count] of allScores) ev += score * count;
+    ev /= n;
+
+    // Sorted ascending for percentiles
+    const sorted = [...allScores.entries()].sort((a,b) => a[0] - b[0]);
+    let cumul = 0;
+    let p25 = null, median = null, p75 = null;
+    for (const [score, count] of sorted) {
+        cumul += count;
+        if (p25 === null && cumul / n >= 0.25) p25 = score;
+        if (median === null && cumul / n >= 0.50) median = score;
+        if (p75 === null && cumul / n >= 0.75) { p75 = score; break; }
+    }
+
+    return { ev, median: median ?? 0, p25: p25 ?? 0, p75: p75 ?? 0, allScores, sorted };
+}
+
+function computeMilestoneStats(lvl) {
+    const map = outcomesState.milestoneScores[lvl];
+    const total = [...map.values()].reduce((a,b) => a+b, 0);
+    if (total === 0) return null;
+    let ev = 0;
+    for (const [score, count] of map) ev += +score * count;
+    ev /= total;
+    const sorted = [...map.entries()].sort((a,b) => +a[0] - +b[0]);
+    let cumul = 0, median = null;
+    for (const [score, count] of sorted) {
+        cumul += count;
+        if (median === null && cumul / total >= 0.5) { median = +score; break; }
+    }
+    return { ev, median: median ?? 0, total };
+}
+
+/* ── EV bar ── */
+
+function renderOutcomesEV(n) {
+    const el = document.getElementById('out-ev-bar');
+    if (!el) return;
+    const stats = computeOutcomesStats(n);
+    if (!stats) { el.innerHTML = ''; return; }
+
+    const currentScore = applyScoring(analyzerState.handNumbers, analyzerState.handModifiers, analyzerState.handNumbers.length === FLIP7_COUNT);
+    let beatPct = 0;
+    if (analyzerState.handNumbers.length > 0) {
+        for (const [score, count] of stats.allScores) {
+            if (score > currentScore) beatPct += count;
+        }
+        beatPct = beatPct / n * 100;
+    }
+
+    el.innerHTML = `
+        <div class="out-ev-main">
+            <div>
+                <div class="out-ev-value">${stats.ev.toFixed(1)}</div>
+                <div class="out-ev-label">EXPECTED SCORE</div>
+            </div>
+            <span class="out-ev-unit">pts</span>
+        </div>
+        <div class="out-ev-secondary">
+            <div class="out-ev-stat">
+                <span class="out-ev-stat-val">${stats.median}</span>
+                <span class="out-ev-stat-lbl">MEDIAN</span>
+            </div>
+            <div class="out-ev-stat">
+                <span class="out-ev-stat-val">${stats.p25}</span>
+                <span class="out-ev-stat-lbl">P25</span>
+            </div>
+            <div class="out-ev-stat">
+                <span class="out-ev-stat-val">${stats.p75}</span>
+                <span class="out-ev-stat-lbl">P75</span>
+            </div>
+        </div>
+        ${analyzerState.handNumbers.length > 0 ? `
+        <div class="out-ev-beat">
+            <div class="out-ev-beat-val">${beatPct.toFixed(1)}%</div>
+            <div class="out-ev-beat-lbl">BEAT CURRENT<br>SCORE (${currentScore})</div>
+        </div>` : ''}`;
+}
+
+/* ── CDF chart ── */
+
+let cdfChart = null;
+
+function destroyCDFChart() {
+    if (cdfChart) { cdfChart.destroy(); cdfChart = null; }
+}
+
+function renderOutcomesCDF(n) {
+    if (typeof Chart === 'undefined') return;
+
+    // Throttle while running
+    if (outcomesState.running && cdfChart) return;
+
+    const stats = computeOutcomesStats(n);
+    if (!stats) return;
+
+    // Build CCDF: P(score >= x) for each score value
+    const sorted = stats.sorted; // ascending
+    let remaining = n;
+    const ccdfData = [];
+    for (const [score, count] of sorted) {
+        ccdfData.push({ x: score, y: +(remaining / n * 100).toFixed(2) });
+        remaining -= count;
+    }
+    // Add tail point at 0
+    ccdfData.push({ x: sorted[sorted.length - 1][0] + 1, y: 0 });
+
+    const currentScore = applyScoring(analyzerState.handNumbers, analyzerState.handModifiers, analyzerState.handNumbers.length === FLIP7_COUNT);
+
+    const canvas = document.getElementById('out-cdf-canvas');
+    if (!canvas) return;
+
+    if (cdfChart) {
+        cdfChart.data.datasets[0].data = ccdfData;
+        cdfChart.options.plugins.scoreMarker.score = analyzerState.handNumbers.length > 0 ? currentScore : null;
+        cdfChart.update('none');
+    } else {
+        cdfChart = new Chart(canvas, {
+            type: 'line',
+            data: {
+                datasets: [{
+                    data: ccdfData,
+                    borderColor: '#3a4db5',
+                    backgroundColor: 'rgba(58,77,181,0.08)',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    fill: true,
+                    tension: 0,
+                    stepped: 'after',
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 0 },
+                plugins: {
+                    legend: { display: false },
+                    scoreMarker: {
+                        score: analyzerState.handNumbers.length > 0 ? currentScore : null,
+                        color: '#d42b38',
+                        lineWidth: 1.5,
+                        label: analyzerState.handNumbers.length > 0 ? `${currentScore}` : null,
+                    },
+                    tooltip: {
+                        backgroundColor: '#2a2420',
+                        titleColor: '#a89880',
+                        bodyColor: '#faf7f2',
+                        callbacks: {
+                            title: ctx => `Score ≥ ${ctx[0].raw.x}`,
+                            label: ctx => `${ctx.raw.y.toFixed(1)}% of simulations`,
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'linear',
+                        title: { display: true, text: 'Final Score', color: '#a89880', font: { size: 10, family: 'IBM Plex Mono' } },
+                        grid: { color: 'rgba(0,0,0,0.05)' },
+                        ticks: { color: '#6a6058', font: { size: 9, family: 'IBM Plex Mono' } },
+                    },
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        title: { display: true, text: 'Chance of scoring ≥ x (%)', color: '#a89880', font: { size: 10, family: 'IBM Plex Mono' } },
+                        grid: { color: 'rgba(0,0,0,0.05)' },
+                        ticks: {
+                            color: '#6a6058',
+                            font: { size: 9, family: 'IBM Plex Mono' },
+                            callback: v => v + '%',
+                        }
+                    }
+                },
+                onClick(e, elements, chart) {
+                    const xVal = chart.scales.x.getValueForPixel(e.x);
+                    if (xVal == null) return;
+                    const score = Math.round(xVal);
+                    // Find CCDF value at this score
+                    let prob = 0;
+                    for (const pt of ccdfData) {
+                        if (pt.x <= score) prob = pt.y;
+                        else break;
+                    }
+                    const infoEl = document.getElementById('out-cdf-info');
+                    if (infoEl) infoEl.textContent = `Score ≥ ${score}: ${prob.toFixed(1)}% chance (${Math.round(prob/100*n).toLocaleString()} sims)`;
+                }
+            }
+        });
+    }
+}
+
+/* ── Stop opportunity table ── */
+
+function renderStopOpportunityTable(n) {
+    const el = document.getElementById('out-stop-opp-table');
+    if (!el) return;
+
+    const startLevel = analyzerState.handNumbers.length;
+    const rows = [];
+    let prevEV = null;
+
+    for (let lvl = Math.max(1, startLevel + 1); lvl <= FLIP7_COUNT; lvl++) {
+        const map = outcomesState.milestoneScores[lvl];
+        if (map.size === 0) continue;
+
+        const stats = computeMilestoneStats(lvl);
+        if (!stats) continue;
+
+        const reach = stats.total;
+        const reachPct = (reach / n * 100).toFixed(1);
+
+        // Bust risk FROM this level: sims that had lvl numbers and then busted
+        const bustsFromHere = outcomesState.bustAtDepth[lvl] || 0;
+        const bustRisk = reach > 0 ? (bustsFromHere / reach * 100).toFixed(1) : null;
+
+        const evGain = prevEV !== null ? stats.ev - prevEV : null;
+        prevEV = stats.ev;
+
+        rows.push({ lvl, ev: stats.ev, median: stats.median, reachPct, bustRisk, evGain, isFlip7: lvl === FLIP7_COUNT });
+    }
+
+    if (rows.length === 0) { el.innerHTML = '<div class="empty-state">No data yet</div>'; return; }
+
+    const rowsHtml = rows.map(r => `
+        <tr class="${r.isFlip7 ? 'flip7-row' : ''}">
+            <td class="sot-level">${r.isFlip7 ? 'FLIP 7' : `${r.lvl} NUM${r.lvl > 1 ? 'S' : ''}`}</td>
+            <td class="sot-ev">${r.ev.toFixed(1)}</td>
+            <td class="${'sot-gain' + (r.evGain == null ? '' : r.evGain >= 0 ? ' pos' : ' neg')}">
+                ${r.evGain != null ? (r.evGain >= 0 ? '+' : '') + r.evGain.toFixed(1) : '—'}
+            </td>
+            <td class="sot-reach">${r.reachPct}%</td>
+            <td class="sot-bust">${r.bustRisk != null ? r.bustRisk + '%' : '—'}</td>
+        </tr>`).join('');
+
+    el.innerHTML = `
+        <table class="out-stop-tbl">
+            <thead>
+                <tr>
+                    <th>MILESTONE</th>
+                    <th>AVG SCORE</th>
+                    <th>EV GAIN</th>
+                    <th>% REACHED</th>
+                    <th>BUST RISK</th>
+                </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+        </table>
+        <div class="out-hist-more" style="text-align:left;padding-top:8px">
+            EV GAIN = change in expected score vs previous milestone · BUST RISK = % of sims that reached this level and then went bust
+        </div>`;
+}
+
+function renderOutcomesHistogram(n) {
+    const totals = new Map();
+    for (const [type, map] of Object.entries(outcomesState.scoresByType)) {
+        for (const [score, count] of map) {
+            if (!totals.has(score)) totals.set(score, { flip7:0, bust:0, freeze:0, empty:0, total:0 });
+            const e = totals.get(score);
+            e[type] += count;
+            e.total += count;
+        }
+    }
+
+    const sorted = [...totals.entries()].sort((a, b) => b[1].total - a[1].total);
+    const maxTotal = sorted.length > 0 ? sorted[0][1].total : 1;
+
+    const rows = sorted.slice(0, 80).map(([score, e]) => {
+        const w = v => (v / maxTotal * 100).toFixed(1);
+        return `<div class="out-hist-row">
+            <span class="out-hist-lbl">${score}</span>
+            <div class="out-hist-bar-wrap">
+                ${e.flip7  > 0 ? `<div class="out-hist-seg flip7"  style="width:${w(e.flip7)}%"  title="Flip 7: ${e.flip7}"></div>` : ''}
+                ${e.freeze > 0 ? `<div class="out-hist-seg freeze" style="width:${w(e.freeze)}%" title="Frozen: ${e.freeze}"></div>` : ''}
+                ${e.empty  > 0 ? `<div class="out-hist-seg empty"  style="width:${w(e.empty)}%"  title="Deck empty: ${e.empty}"></div>` : ''}
+                ${e.bust   > 0 ? `<div class="out-hist-seg bust"   style="width:${w(e.bust)}%"   title="Bust: ${e.bust}"></div>` : ''}
+            </div>
+            <span class="out-hist-count">${(e.total / n * 100).toFixed(1)}%</span>
+        </div>`;
+    }).join('');
+
+    const el = document.getElementById('out-final-histogram');
+    if (el) el.innerHTML = `<div class="out-histogram-scroll">${rows}${sorted.length > 80 ? `<div class="out-hist-more">${sorted.length - 80} more score values not shown</div>` : ''}</div>`;
+}
+
+const milestoneCharts = new Map(); // level -> Chart.js instance
+let _lastMilestoneRender = 0;
+
+function destroyMilestoneCharts() {
+    milestoneCharts.forEach(c => c.destroy());
+    milestoneCharts.clear();
+}
+
+function renderOutcomesMilestones(n) {
+    // Throttle expensive chart updates while simulation is hot
+    const now = performance.now();
+    if (outcomesState.running && now - _lastMilestoneRender < 400) return;
+    _lastMilestoneRender = now;
+
+    const container = document.getElementById('out-milestone-charts');
+    if (!container) return;
+
+    const startLevel = analyzerState.handNumbers.length;
+    const activeLevels = [];
+    for (let lvl = Math.max(1, startLevel + 1); lvl <= FLIP7_COUNT; lvl++) {
+        if (outcomesState.milestoneScores[lvl].size > 0) activeLevels.push(lvl);
+    }
+
+    if (activeLevels.length === 0) {
+        container.innerHTML = '<div class="empty-state">No milestone data yet</div>';
+        destroyMilestoneCharts();
+        return;
+    }
+
+    // Destroy charts for levels no longer active
+    milestoneCharts.forEach((chart, lvl) => {
+        if (!activeLevels.includes(lvl)) {
+            chart.destroy();
+            milestoneCharts.delete(lvl);
+            const panel = document.getElementById(`out-ms-panel-${lvl}`);
+            if (panel) panel.remove();
+        }
+    });
+
+    // Compute global score range across ALL active levels (for consistent X axis)
+    const binSize = outcomesMilestoneGrouping;
+    let globalMin = Infinity, globalMax = -Infinity;
+    for (const lvl of activeLevels) {
+        for (const score of outcomesState.milestoneScores[lvl].keys()) {
+            const s = +score;
+            if (s < globalMin) globalMin = s;
+            if (s > globalMax) globalMax = s;
+        }
+    }
+    // Align to bin boundaries
+    const binMin = Math.floor(globalMin / binSize) * binSize;
+    const binMax = Math.floor(globalMax / binSize) * binSize;
+
+    // Build the full label set for this range (every bin from binMin to binMax)
+    const allLabels = [];
+    for (let b = binMin; b <= binMax; b += binSize) {
+        allLabels.push(binSize === 1 ? String(b) : `${b}–${b + binSize - 1}`);
+    }
+
+    for (const lvl of activeLevels) {
+        const map = outcomesState.milestoneScores[lvl];
+        const total = [...map.values()].reduce((a,b) => a+b, 0);
+
+        // Bin the data
+        const binnedMap = new Map();
+        for (const [score, count] of map) {
+            const bin = Math.floor(+score / binSize) * binSize;
+            binnedMap.set(bin, (binnedMap.get(bin) || 0) + count);
+        }
+
+        // Build data array aligned to allLabels
+        const data = [];
+        for (let b = binMin; b <= binMax; b += binSize) {
+            const count = binnedMap.get(b) || 0;
+            data.push(+(count / total * 100).toFixed(3));
+        }
+
+        // Create panel DOM if needed
+        let panel = document.getElementById(`out-ms-panel-${lvl}`);
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.id = `out-ms-panel-${lvl}`;
+            panel.className = 'out-milestone-full';
+            panel.innerHTML = `
+                <div class="out-milestone-header">
+                    <span class="out-milestone-title-full">${lvl === FLIP7_COUNT ? 'FLIP 7 (7 NUMBERS)' : `${lvl} NUMBER${lvl > 1 ? 'S' : ''}`}</span>
+                    <span class="out-milestone-reach-full" id="out-ms-reach-${lvl}"></span>
+                </div>
+                <div class="out-milestone-canvas-wrap"><canvas id="out-ms-canvas-${lvl}"></canvas></div>
+                <div class="out-milestone-stats" id="out-ms-stats-${lvl}"></div>`;
+            container.appendChild(panel);
+        }
+
+        const reachEl = document.getElementById(`out-ms-reach-${lvl}`);
+        if (reachEl) reachEl.textContent = `${total.toLocaleString()} sims reached this point`;
+
+        // Stats strip: EV, median
+        const stats = computeMilestoneStats(lvl);
+        const statsEl = document.getElementById(`out-ms-stats-${lvl}`);
+        if (statsEl && stats) {
+            statsEl.innerHTML = `
+                <span>AVG <span class="ems-val">${stats.ev.toFixed(1)}</span></span>
+                <span>MEDIAN <span class="ems-val">${stats.median}</span></span>`;
+        }
+
+        const barColor    = lvl === FLIP7_COUNT ? 'rgba(10,138,96,0.7)'  : 'rgba(58,77,181,0.7)';
+        const borderColor = lvl === FLIP7_COUNT ? '#0a8a60' : '#3a4db5';
+
+        if (milestoneCharts.has(lvl)) {
+            const chart = milestoneCharts.get(lvl);
+            // Update labels and data for new range / grouping
+            chart.data.labels = allLabels;
+            chart.data.datasets[0].data = data;
+            chart.update('none');
+        } else {
+            if (typeof Chart === 'undefined') continue;
+            const canvas = document.getElementById(`out-ms-canvas-${lvl}`);
+            if (!canvas) continue;
+            const chart = new Chart(canvas, {
+                type: 'bar',
+                data: {
+                    labels: allLabels,
+                    datasets: [{
+                        data,
+                        backgroundColor: barColor,
+                        borderColor,
+                        borderWidth: 1,
+                        borderRadius: 2,
+                        borderSkipped: false,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: { duration: 0 },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: '#2a2420',
+                            titleColor: '#a89880',
+                            bodyColor: '#faf7f2',
+                            callbacks: {
+                                title: ctx => `Score: ${ctx[0].label}`,
+                                label: ctx => `${ctx.raw.toFixed(1)}% of sims`,
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: { display: true, text: 'Score', color: '#a89880', font: { size: 10, family: 'IBM Plex Mono' } },
+                            grid: { color: 'rgba(0,0,0,0.05)' },
+                            ticks: {
+                                color: '#6a6058',
+                                font: { size: 9, family: 'IBM Plex Mono' },
+                                maxTicksLimit: 30,
+                                autoSkip: true,
+                            }
+                        },
+                        y: {
+                            title: { display: true, text: 'Probability (%)', color: '#a89880', font: { size: 10, family: 'IBM Plex Mono' } },
+                            beginAtZero: true,
+                            grid: { color: 'rgba(0,0,0,0.05)' },
+                            ticks: {
+                                color: '#6a6058',
+                                font: { size: 9, family: 'IBM Plex Mono' },
+                                callback: v => v + '%',
+                            }
+                        }
+                    }
+                }
+            });
+            milestoneCharts.set(lvl, chart);
+        }
+    }
+}
+
+const OUT_TYPE_LABELS = { flip7: 'FLIP 7', bust: 'BUST', freeze: 'FROZEN', empty: 'DECK EMPTY' };
+
+function renderOutcomesTable(n) {
+    const rows = [];
+    for (const [type, map] of Object.entries(outcomesState.scoresByType)) {
+        for (const [score, count] of map) {
+            rows.push({ type, score: +score, count });
+        }
+    }
+    rows.sort((a,b) => b.count - a.count);
+
+    const html = rows.slice(0, 100).map((r, i) => `
+        <div class="out-tbl-row ${r.type}">
+            <span class="out-tbl-rank">${i+1}</span>
+            <span class="out-tbl-type">${OUT_TYPE_LABELS[r.type]}</span>
+            <span class="out-tbl-score">${r.score >= 0 ? '+' : ''}${r.score} pts</span>
+            <span class="out-tbl-pct">${(r.count/n*100).toFixed(2)}%</span>
+            <span class="out-tbl-n">${r.count.toLocaleString()}</span>
+        </div>`).join('');
+
+    const el = document.getElementById('out-outcomes-table');
+    if (el) el.innerHTML = `
+        <div class="out-tbl-header">
+            <span>RANK</span><span>OUTCOME</span><span>SCORE</span><span>CHANCE</span><span>COUNT</span>
+        </div>
+        <div class="out-tbl-body">${html}${rows.length > 100 ? `<div class="out-hist-more">${rows.length-100} more hidden</div>` : ''}</div>`;
+}
 
 /* ══════════════════════════════════════════════════════════════════
    §9  CARD TRACKER UI
@@ -2810,4 +3772,5 @@ document.addEventListener('DOMContentLoaded', () => {
     initSimulator();
     initAnalyzer();
     initTracker();
+    initOutcomes();
 });
